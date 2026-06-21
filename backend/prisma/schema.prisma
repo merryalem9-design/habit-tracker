@@ -1,13 +1,237 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
-  output   = "../generated/prisma"
+  output = "../generated/prisma" 
+}
+datasource db {
+  provider = "postgresql" 
+}
+enum CheckInStatus {
+  success 
+  relapse
+  skipped 
+} 
+enum GroupType {
+  pair 
+  small_group
+} 
+enum GroupStatus {
+  active 
+  disbanded 
+}
+enum MembershipStatus {
+  active
+  left
+}
+enum ReportStatus {
+  open
+  reviewed
+  dismissed
+}
+enum DistractionContentType {
+  quote 
+  verse
+  activity
+}
+enum SuggestionType {
+  content
+  activity
+  nearby_place
+  ping_buddy
+}
+enum NotificationType {
+  milestone 
+  reminder
+  reaction
+}
+//Models
+model User {
+  id String @id @default(uuid()) 
+  email String @unique
+  passwordHash String @map("password_hash")
+  displayAlias String @map("display_alias")
+  avatarSeed String @map("avatar_seed")
+  timezone String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  //relation fields
+  habits Habit[] //habits, and its type is: an array of Habit records.
+  checkIns CheckIn[]
+  groupMemberships GroupMembership[]
+  posts Post[]
+  reactions Reaction[]
+  reportsField Report[] @relation("ReporterRelation")
+  preferences UserPreferences?
+  distractionLogs DistractionLog[]
+  notifications Notification[]
+@@map("users") //the table name is users in the actual DB, not user
+}
+model Habit {
+  id String @id @default(uuid())
+  userId String @map("user_id")
+  title String
+  category String 
+  targetFrequency String @map("target_frequency")
+  isActive Boolean @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  user User @relation(fields: [userId], references: [id])
+  checkIns CheckIn[]
+  streak Streak?
+
+  @@map("habits")
+}
+model CheckIn {
+  id String @id @default(uuid())
+  habitId String @map("habit_id")
+  userId String @map("user_id")
+  date DateTime @db.Date
+  status CheckInStatus //must be : success, relapse, skipped
+  note String?
+  mood Int? //opitional mood rating from 1-5
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  habit Habit @relation(fields:[habitId], references:[id])
+  user User @relation(fields:[userId], references:[id])
+  posts Post[]
+  distractionlogs DistractionLog[]
+
+  @@map("check_ins")
 }
 
-datasource db {
-  provider = "postgresql"
+model Streak {
+habitId String @id @map("habit_id")
+currentStreak Int @default(0) @map("current_streak")
+longestStreak Int @default(0) @map("longest_streak")
+lastCheckinDate DateTime? @db.Date @map("last_checkin_date") //@db.date: tells postgress to just store the date not time
+
+habit Habit @relation(fields:[habitId], references:[id])
+@@map("streaks")
+}
+model Group {
+  id String @id @default(uuid())
+  category String
+  type GroupType
+  status GroupStatus @default(active)
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  memberships GroupMembership[]
+  posts Post[]
+  @@map("groups")
+}
+model GroupMembership {
+  id String @id @default(uuid())
+  groupId String @map("group_id")
+  userId String @map("user_id")
+  aliasInGroup String @map("alias_in_group")
+  status MembershipStatus @default(active)
+  joinedAt DateTime @default(now()) @map("joined_at")
+  
+  group Group @relation(fields:[groupId], references:[id])
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("group_memberships")
+}
+model Post {
+  id String @id @default(uuid())
+  groupId String @map("group_id")
+  checkInId String? @map("check_in_id")
+  userId String @map("user_id")
+  content String?
+  flagged Boolean @default(false)
+  flaggedReason String? @map("flagged_reason")
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  group Group @relation(fields: [groupId], references: [id])
+  checkIn CheckIn? @relation(fields: [checkInId], references: [id])
+  user User @relation(fields: [userId], references:[ id])
+  reactions Reaction[]
+  reports Report[]
+  safetyEvents SafetyEvent[]
+
+  @@map("posts")
+}
+model Reaction {
+  id String @id @default(uuid())
+  postId String @map("post_id")
+  userId String @map("user_id")
+  reactionType String @map("reaction_type")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  post Post @relation(fields:[postId], references:[id])
+  user User @relation(fields:[userId], references:[id])
+
+  @@map("reactions")
+}
+model Report {
+  id String @id @default(uuid())
+  reporterId String @map("reporter_id")
+  postId String @map("post_id")
+  reason String
+  status ReportStatus @default(open)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  reporter User @relation("ReporterRelation", fields: [reporterId], references: [id])
+  post Post @relation(fields: [postId], references: [id])
+@@map("reports")
+}
+model SafetyEvent {
+  id String @id @default(uuid())
+  postId String @map("post_id")
+  keywordMatched String @map("keyword_matched")
+  resourceShown Boolean @default(false) @map("resource_shown")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  post Post @relation(fields:[postId], references:[id])
+
+  @@map("safety_events")
+}
+model UserPreferences {
+  id String @id @default(uuid())
+  userId String @unique @map("user_id")
+  contentCategories String[] @map("content_categories")
+  enableLocationSuggestions Boolean @default(false) @map("enable_location_suggestions")
+  notificationPrefs Json @map("notification_prefs") //reaction, streak milestone, reminder notifs
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields:[userId], references:[id])
+
+  @@map("user_preferences")
+}
+model DistractionContent {
+  id String @id @default(uuid())
+  type DistractionContentType
+  category String
+  text String
+  source String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+distractionLogs DistractionLog[]
+  @@map("distraction_content")
+}
+model DistractionLog {
+  id String @id @default(uuid())
+  userId String @map("user_id")
+  checkInId String? @map("check_in_id")
+  suggestionType SuggestionType 
+  contentId String? @map("content_id")
+  triggeredAt DateTime @default(now()) @map("triggered_at")
+  selfReportedHelp Boolean? @map("self_reported_help")
+
+user User @relation(fields:[userId], references:[id])
+checkIn CheckIn? @relation(fields:[checkInId], references:[id])
+content DistractionContent? @relation(fields:[contentId], references:[id])
+
+@@map("distraction_logs")
+}
+model Notification {
+  id String @id @default(uuid())
+  userId String @map("user_id")
+  type NotificationType
+  content String  // the actual notification text
+  readAt DateTime? @map("read_at") // null until the user reads it
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("notifications")
 }
