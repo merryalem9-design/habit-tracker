@@ -85,16 +85,17 @@ model CheckIn {
   habitId String @map("habit_id")
   userId String @map("user_id")
   date DateTime @db.Date
-  status CheckInStatus //must be : success, relapse, skipped
+  status CheckInStatus
   note String?
-  mood Int? //opitional mood rating from 1-5
+  mood Int?
   createdAt DateTime @default(now()) @map("created_at")
-  
+
   habit Habit @relation(fields:[habitId], references:[id])
   user User @relation(fields:[userId], references:[id])
   posts Post[]
   distractionlogs DistractionLog[]
 
+  @@unique([habitId, date])   // ← add this line
   @@map("check_ins")
 }
 
