@@ -21,8 +21,11 @@ export function requireAuth(req: AuthRequest, res: Response, next: NextFunction)
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as { userId: string };
     req.userId = decoded.userId;
-    next(); // valid — continue to the actual route handler
+    next();
   } catch (error) {
+    if (error instanceof jwt.TokenExpiredError) {
+      return res.status(401).json({ error: "Token expired", code: "TOKEN_EXPIRED" });
+    }
     return res.status(401).json({ error: "Invalid or expired token" });
   }
 }

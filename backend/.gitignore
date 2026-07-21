@@ -5,3 +5,4 @@ node_modules
 /generated/prisma
 .DS_Store
 .DS_Store
+errors.log

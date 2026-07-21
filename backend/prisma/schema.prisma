@@ -63,7 +63,21 @@ model User {
   preferences UserPreferences?
   distractionLogs DistractionLog[]
   notifications Notification[]
+  refreshTokens RefreshToken[]
 @@map("users") //the table name is users in the actual DB, not user
+}
+
+model RefreshToken {
+  id String @id @default(uuid())
+  userId String @map("user_id")
+  tokenHash String @map("token_hash")
+  expiresAt DateTime @map("expires_at")
+  revoked Boolean @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("refresh_tokens")
 }
 model Habit {
   id String @id @default(uuid())
@@ -96,6 +110,7 @@ model CheckIn {
   distractionlogs DistractionLog[]
 
   @@unique([habitId, date])   // ← add this line
+  @@index([habitId, date])
   @@map("check_ins")
 }
 
