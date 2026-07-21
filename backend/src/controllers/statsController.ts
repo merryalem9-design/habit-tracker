@@ -3,6 +3,45 @@ import prisma from "../prismaClient";
 import { AuthRequest } from "../middleware/authMiddleware";
 import logger from "../lib/logger";
 
+// GET /stats/dashboard - General summary stats for the authenticated user
+export async function getDashboard(req: AuthRequest, res: Response) {
+  try {
+    const userId = req.userId;
+
+    const habits = await prisma.habit.findMany({
+      where: { userId, isActive: true },
+      include: { streak: true },
+    });
+
+    const activeHabitsCount = habits.length;
+    let totalCurrentStreak = 0;
+    let highestStreak = 0;
+
+    habits.forEach((habit) => {
+      const current = habit.streak?.currentStreak ?? 0;
+      const longest = habit.streak?.longestStreak ?? 0;
+      totalCurrentStreak += current;
+      if (longest > highestStreak) {
+        highestStreak = longest;
+      }
+    });
+
+    const totalCheckIns = await prisma.checkIn.count({
+      where: { userId },
+    });
+
+    res.json({
+      activeHabitsCount,
+      totalCurrentStreak,
+      highestStreak,
+      totalCheckIns,
+    });
+  } catch (error) {
+    logger.error("Get dashboard stats error", { error });
+    res.status(500).json({ error: "Failed to fetch dashboard stats" });
+  }
+}
+
 // GET /habits/:habitId/stats
 export async function getHabitStats(req: AuthRequest, res: Response) {
   try {
@@ -50,7 +89,7 @@ export async function getCheckInsByMonth(req: AuthRequest, res: Response) {
 
     const [year, monthNum] = month.split("-").map(Number);
     const start = new Date(Date.UTC(year, monthNum - 1, 1));
-    const end = new Date(Date.UTC(year, monthNum, 1)); // first day of next month, exclusive
+    const end = new Date(Date.UTC(year, monthNum, 1)); // first day of next month
 
     const checkIns = await prisma.checkIn.findMany({
       where: { habitId, date: { gte: start, lt: end } },
@@ -75,55 +114,14 @@ export async function getHabitStreak(req: AuthRequest, res: Response) {
     }
 
     const streak = await prisma.streak.findUnique({ where: { habitId } });
-    res.json(streak);
-  } catch (error) {
-    logger.error("Get habit streak error", { error });
-    res.status(500).json({ error: "Failed to fetch streak" });
-  }
-}
-
-// GET /dashboard — aggregate across all of the user's habits
-export async function getDashboard(req: AuthRequest, res: Response) {
-  try {
-    const habits = await prisma.habit.findMany({
-      where: { userId: req.userId, isActive: true },
-      include: { streak: true, checkIns: true },
-    });
-
-    const totalHabits = habits.length;
-
-    let combinedCurrentStreak = 0;
-    let combinedLongestStreak = 0;
-    let mostConsistent: { title: string; successRate: number } | null = null;
-
-    const oneWeekAgo = new Date();
-    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-    let checkInsThisWeek = 0;
-
-    for (const habit of habits) {
-      combinedCurrentStreak += habit.streak?.currentStreak ?? 0;
-      combinedLongestStreak += habit.streak?.longestStreak ?? 0;
-
-      const total = habit.checkIns.length;
-      const successes = habit.checkIns.filter((c) => c.status === "success").length;
-      const rate = total > 0 ? (successes / total) * 100 : 0;
-
-      if (!mostConsistent || rate > mostConsistent.successRate) {
-        mostConsistent = { title: habit.title, successRate: Math.round(rate * 10) / 10 };
-      }
-
-      checkInsThisWeek += habit.checkIns.filter((c) => c.date >= oneWeekAgo).length;
-    }
 
     res.json({
-      totalHabits,
-      combinedCurrentStreak,
-      combinedLongestStreak,
-      mostConsistentHabit: mostConsistent,
-      checkInsThisWeek,
+      currentStreak: streak?.currentStreak ?? 0,
+      longestStreak: streak?.longestStreak ?? 0,
+      lastCheckinDate: streak?.lastCheckinDate ?? null,
     });
   } catch (error) {
-    logger.error("Get dashboard error", { error });
-    res.status(500).json({ error: "Failed to fetch dashboard" });
+    logger.error("Get habit streak error", { error });
+    res.status(500).json({ error: "Failed to fetch habit streak" });
   }
 }
