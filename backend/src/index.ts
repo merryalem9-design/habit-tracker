@@ -10,6 +10,7 @@ import checkInRoutes from "./routes/checkInRoutes";
 import statsRoutes from "./routes/statsRoutes";
 import groupRoutes from "./routes/groupRoutes";
 import postRoutes from "./routes/postRoutes";
+import distractRoutes from "./routes/distractRoutes";
 import reportRoutes from "./routes/reportRoutes";
 
 import { initSocket } from "./socket";
@@ -36,6 +37,7 @@ app.use("/api/checkins", checkInRoutes);
 app.use("/api", statsRoutes);
 app.use("/api/groups", groupRoutes);
 app.use("/api/posts", postRoutes);
+app.use("/api/distract-me", distractRoutes);
 app.use("/api/reports", reportRoutes);
 
 

@@ -30,3 +30,13 @@ export const createCheckInSchema = z.object({
   note: z.string().max(1000).optional(),
   mood: z.number().int().min(1).max(10).optional(),
 });
+export const distractMeSchema = z.object({
+  checkInId: z.string().uuid().optional(),
+  lat: z.number().min(-90).max(90).optional(),
+  lng: z.number().min(-180).max(180).optional(),
+});
+
+export const distractFeedbackSchema = z.object({
+  logId: z.string().uuid(),
+  helped: z.boolean(),
+});
