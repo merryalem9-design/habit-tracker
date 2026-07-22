@@ -176,6 +176,7 @@ model Reaction {
   post Post @relation(fields:[postId], references:[id])
   user User @relation(fields:[userId], references:[id])
 
+  @@unique([postId, userId])
   @@map("reactions")
 }
 model Report {
