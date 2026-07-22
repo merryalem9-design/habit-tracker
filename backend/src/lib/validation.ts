@@ -40,3 +40,6 @@ export const distractFeedbackSchema = z.object({
   logId: z.string().uuid(),
   helped: z.boolean(),
 });
+export const editPostSchema = z.object({
+  content: z.string().min(1).max(280),
+});

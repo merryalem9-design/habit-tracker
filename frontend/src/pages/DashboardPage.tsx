@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { getHabits, createHabit, checkIn } from "../lib/habitApi";
+import { getMyGroups, joinGroup } from "../lib/groupApi";
 import { useAuthStore } from "../store/authStore";
 
 interface Habit {
@@ -9,11 +11,18 @@ interface Habit {
   streak: { currentStreak: number; longestStreak: number } | null;
 }
 
+interface MyGroup {
+  id: string;
+  group: { id: string; category: string };
+}
+
 export default function DashboardPage() {
   const [habits, setHabits] = useState<Habit[]>([]);
+  const [myGroups, setMyGroups] = useState<MyGroup[]>([]);
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const navigate = useNavigate();
   const logout = useAuthStore((s) => s.logout);
   const user = useAuthStore((s) => s.user);
 
@@ -27,7 +36,16 @@ export default function DashboardPage() {
         console.error("Failed to fetch habits:", err);
       }
     }
+    async function loadGroups() {
+      try {
+        const data = await getMyGroups();
+        if (isMounted) setMyGroups(data);
+      } catch (err) {
+        console.error("Failed to fetch groups:", err);
+      }
+    }
     loadHabits();
+    loadGroups();
     return () => { isMounted = false; };
   }, []);
 
@@ -63,6 +81,15 @@ export default function DashboardPage() {
     }
   }
 
+  async function handleGoToGroup(category: string) {
+    try {
+      const membership = await joinGroup(category);
+      navigate(`/groups/${membership.groupId}`);
+    } catch (err) {
+      console.error("Failed to join group:", err);
+    }
+  }
+
   // Calculate quick stats
   const activeCount = habits.length;
   const bestStreak = habits.reduce((max, h) => Math.max(max, h.streak?.longestStreak || 0), 0);
@@ -94,6 +121,33 @@ export default function DashboardPage() {
           </div>
         </section>
 
+        {/* Your Groups */}
+        {myGroups.length > 0 && (
+          <section style={{ marginBottom: "24px" }}>
+            <h2 style={{ fontSize: "16px", marginBottom: "10px" }}>Your Groups</h2>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {myGroups.map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => navigate(`/groups/${m.group.id}`)}
+                  style={{
+                    textAlign: "left",
+                    padding: "12px 16px",
+                    background: "rgba(255,255,255,0.05)",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: "12px",
+                    color: "#F8FAFC",
+                    cursor: "pointer",
+                    fontSize: "14px",
+                  }}
+                >
+                  {m.group.category} group →
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* Section Title */}
         <div style={styles.sectionHeader}>
           <h2>Today's Habits</h2>
@@ -116,19 +170,25 @@ export default function DashboardPage() {
                     🔥 <strong>{habit.streak?.currentStreak ?? 0}</strong> day streak
                   </div>
                 </div>
-                
+
                 <div style={styles.actionGroup}>
-                  <button 
-                    onClick={() => handleCheckIn(habit.id, "success")} 
+                  <button
+                    onClick={() => handleCheckIn(habit.id, "success")}
                     style={{ ...styles.actionBtn, ...styles.successBtn }}
                   >
                     Done
                   </button>
-                  <button 
-                    onClick={() => handleCheckIn(habit.id, "relapse")} 
+                  <button
+                    onClick={() => handleCheckIn(habit.id, "relapse")}
                     style={{ ...styles.actionBtn, ...styles.relapseBtn }}
                   >
                     Miss
+                  </button>
+                  <button
+                    onClick={() => handleGoToGroup(habit.category)}
+                    style={{ ...styles.actionBtn, backgroundColor: "rgba(168, 85, 247, 0.15)", color: "#A855F7" }}
+                  >
+                    Group
                   </button>
                 </div>
               </div>
@@ -183,7 +243,7 @@ export default function DashboardPage() {
 const styles: Record<string, React.CSSProperties> = {
   appViewport: {
     minHeight: "100vh",
-    backgroundColor: "#0F172A", // Deep sleek dark background
+    backgroundColor: "#0F172A",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
@@ -192,7 +252,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   mobileContainer: {
     width: "100%",
-    maxWidth: "430px", // iPhone 15 Pro Max width standard
+    maxWidth: "430px",
     minHeight: "100vh",
     backgroundColor: "#1E293B",
     padding: "24px 20px 100px 20px",
@@ -299,6 +359,7 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: "space-between",
     alignItems: "center",
     boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.2)",
+    gap: "10px",
   },
   habitInfo: {
     display: "flex",
@@ -325,6 +386,8 @@ const styles: Record<string, React.CSSProperties> = {
   actionGroup: {
     display: "flex",
     gap: "8px",
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
   },
   actionBtn: {
     border: "none",
@@ -346,7 +409,7 @@ const styles: Record<string, React.CSSProperties> = {
   fab: {
     position: "fixed",
     bottom: "30px",
-    right: "calc(50% - 190px)", // center aligns on standard desktop viewport wrap
+    right: "calc(50% - 190px)",
     width: "56px",
     height: "56px",
     borderRadius: "28px",

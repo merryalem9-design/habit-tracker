@@ -1,12 +1,15 @@
 import { useEffect, useState, useRef } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import apiClient from "../lib/apiClient";
 import { getSocket } from "../lib/socket";
+import { editPost as editPostApi, deletePost as deletePostApi } from "../lib/postApi";
+import { useAuthStore } from "../store/authStore";
 
 interface Post {
   id: string;
   content: string | null;
   alias: string;
+  userId: string;
   createdAt: string;
   reactions: { reactionType: string }[];
 }
@@ -29,13 +32,17 @@ interface DistractResult {
 
 export default function GroupFeedPage() {
   const { groupId } = useParams();
+  const navigate = useNavigate();
   const [posts, setPosts] = useState<Post[]>([]);
   const [message, setMessage] = useState("");
   const [supportResource, setSupportResource] = useState<SupportResource | null>(null);
   const [distractResult, setDistractResult] = useState<DistractResult | null>(null);
   const [distractLoading, setDistractLoading] = useState(false);
   const [feedbackSent, setFeedbackSent] = useState<Record<string, boolean>>({});
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState("");
   const socketRef = useRef(getSocket());
+  const currentUser = useAuthStore((s) => s.user);
 
   useEffect(() => {
     async function loadFeed() {
@@ -55,9 +62,19 @@ export default function GroupFeedPage() {
       setPosts((prev) => [post, ...prev]);
     });
 
+    socket.on("post_edited", (data: { id: string; content: string }) => {
+      setPosts((prev) => prev.map((p) => (p.id === data.id ? { ...p, content: data.content } : p)));
+    });
+
+    socket.on("post_deleted", (data: { id: string }) => {
+      setPosts((prev) => prev.filter((p) => p.id !== data.id));
+    });
+
     return () => {
       socket.emit("leave_group", groupId);
       socket.off("new_post");
+      socket.off("post_edited");
+      socket.off("post_deleted");
     };
   }, [groupId]);
 
@@ -110,9 +127,46 @@ export default function GroupFeedPage() {
     }
   }
 
+  function startEdit(post: Post) {
+    setEditingPostId(post.id);
+    setEditContent(post.content ?? "");
+  }
+
+  function cancelEdit() {
+    setEditingPostId(null);
+    setEditContent("");
+  }
+
+  async function handleSaveEdit(postId: string) {
+    if (!editContent.trim()) return;
+    try {
+      await editPostApi(postId, editContent);
+      setEditingPostId(null);
+      setEditContent("");
+    } catch (err) {
+      console.error("Failed to edit post:", err);
+    }
+  }
+
+  async function handleDelete(postId: string) {
+    if (!window.confirm("Delete this post?")) return;
+    try {
+      await deletePostApi(postId);
+    } catch (err) {
+      console.error("Failed to delete post:", err);
+    }
+  }
+
   return (
     <div style={{ minHeight: "100vh", backgroundColor: "#0F172A", display: "flex", justifyContent: "center", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", color: "#F8FAFC" }}>
       <div style={{ width: "100%", maxWidth: "500px", padding: "24px 16px 80px", boxSizing: "border-box" }}>
+        <button
+          onClick={() => navigate("/dashboard")}
+          style={{ background: "none", border: "none", color: "#94A3B8", fontSize: "14px", cursor: "pointer", marginBottom: "12px", padding: 0 }}
+        >
+          ← Back to Dashboard
+        </button>
+
         <h2 style={{ fontSize: "22px", fontWeight: 700, marginBottom: "20px", color: "#F8FAFC" }}>Group Feed</h2>
 
         {supportResource !== null && (
@@ -194,9 +248,35 @@ export default function GroupFeedPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
           {posts.map((post) => (
             <div key={post.id} style={{ background: "#1E293B", border: "1px solid #334155", borderRadius: "12px", padding: "14px" }}>
-              <strong style={{ fontSize: "14px", fontWeight: 700, color: "#A855F7", display: "block", marginBottom: "6px" }}>{post.alias}</strong>
-              <p style={{ fontSize: "14px", color: "#E2E8F0", margin: "0 0 8px", lineHeight: "1.5" }}>{post.content}</p>
-              <small style={{ fontSize: "11px", color: "#64748B" }}>{new Date(post.createdAt).toLocaleString()}</small>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <strong style={{ fontSize: "14px", fontWeight: 700, color: "#A855F7", display: "block", marginBottom: "6px" }}>{post.alias}</strong>
+                {currentUser?.id === post.userId && editingPostId !== post.id && (
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <button onClick={() => startEdit(post)} style={{ background: "none", border: "none", color: "#94A3B8", fontSize: "12px", cursor: "pointer", padding: 0 }}>Edit</button>
+                    <button onClick={() => handleDelete(post.id)} style={{ background: "none", border: "none", color: "#EF4444", fontSize: "12px", cursor: "pointer", padding: 0 }}>Delete</button>
+                  </div>
+                )}
+              </div>
+
+              {editingPostId === post.id ? (
+                <div>
+                  <input
+                    value={editContent}
+                    onChange={(e) => setEditContent(e.target.value)}
+                    maxLength={280}
+                    style={{ width: "100%", padding: "8px 12px", backgroundColor: "#0F172A", border: "1px solid #334155", borderRadius: "8px", color: "#FFF", fontSize: "14px", marginBottom: "8px", boxSizing: "border-box" }}
+                  />
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <button onClick={() => handleSaveEdit(post.id)} style={{ flex: 1, padding: "6px", background: "#A855F7", border: "none", borderRadius: "8px", color: "#FFF", fontSize: "12px", cursor: "pointer" }}>Save</button>
+                    <button onClick={cancelEdit} style={{ flex: 1, padding: "6px", background: "transparent", border: "1px solid #4B5563", borderRadius: "8px", color: "#94A3B8", fontSize: "12px", cursor: "pointer" }}>Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <p style={{ fontSize: "14px", color: "#E2E8F0", margin: "0 0 8px", lineHeight: "1.5" }}>{post.content}</p>
+                  <small style={{ fontSize: "11px", color: "#64748B" }}>{new Date(post.createdAt).toLocaleString()}</small>
+                </>
+              )}
             </div>
           ))}
         </div>

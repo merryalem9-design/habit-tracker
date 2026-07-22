@@ -56,7 +56,7 @@ export async function getFeed(req: AuthRequest, res: Response) {
     const blockedIds = new Set(blocks.map((b) => b.blockedId));
 
     const posts = await prisma.post.findMany({
-      where: { groupId, flagged: false },
+      where: { groupId, flagged: false, deleted: false } ,
       include: {
         reactions: true,
         user: { select: { id: true } },
@@ -71,15 +71,16 @@ export async function getFeed(req: AuthRequest, res: Response) {
     const aliasMap = new Map(membershipsInGroup.map((m) => [m.userId, m.aliasInGroup]));
 
     const shaped = posts
-      .filter((p) => !blockedIds.has(p.userId)) // hide posts from blocked users
-      .map((p) => ({
-        id: p.id,
-        content: p.content,
-        checkInId: p.checkInId,
-        createdAt: p.createdAt,
-        alias: aliasMap.get(p.userId) ?? "Anonymous",
-        reactions: p.reactions,
-      }));
+  .filter((p) => !blockedIds.has(p.userId))
+  .map((p) => ({
+    id: p.id,
+    content: p.content,
+    checkInId: p.checkInId,
+    createdAt: p.createdAt,
+    alias: aliasMap.get(p.userId) ?? "Anonymous",
+    userId: p.userId,
+    reactions: p.reactions,
+  }));
 
     res.json(shaped);
   } catch (error) {

@@ -159,6 +159,7 @@ model Post {
   content String?
   flagged Boolean @default(false)
   flaggedReason String? @map("flagged_reason")
+  deleted Boolean @default(false)
   createdAt DateTime @default(now()) @map("created_at")
   
   group Group @relation(fields: [groupId], references: [id])

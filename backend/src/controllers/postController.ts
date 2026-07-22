@@ -59,13 +59,14 @@ export async function createPost(req: AuthRequest, res: Response) {
     }
 
     const shaped = {
-      id: post.id,
-      content: post.content,
-      checkInId: post.checkInId,
-      createdAt: post.createdAt,
-      alias: membership.aliasInGroup,
-      reactions: [] as unknown[],
-    };
+  id: post.id,
+  content: post.content,
+  checkInId: post.checkInId,
+  createdAt: post.createdAt,
+  alias: membership.aliasInGroup,
+  userId: post.userId,
+  reactions: [] as unknown[],
+};
 
     getIO().to(`group:${groupId}`).emit("new_post", shaped);
 
@@ -108,5 +109,68 @@ export async function reactToPost(req: AuthRequest, res: Response) {
   } catch (error) {
     logger.error("React to post error", { error });
     res.status(500).json({ error: "Failed to add reaction" });
+  }
+}
+export async function editPost(req: AuthRequest, res: Response) {
+  try {
+    const postId = req.params.postId as string;
+    const { content } = req.body;
+
+    const post = await prisma.post.findUnique({ where: { id: postId } });
+    if (!post || post.deleted) return res.status(404).json({ error: "Post not found" });
+    if (post.userId !== req.userId) return res.status(403).json({ error: "Not your post" });
+
+    // Re-run safety check on the edited content — a clean post could be edited into a flagged one
+    const safetyResult = checkContent(content);
+
+    const updated = await prisma.post.update({
+      where: { id: postId },
+      data: {
+        content,
+        flagged: safetyResult.flagged,
+        flaggedReason: safetyResult.matchedCategory,
+      },
+    });
+
+    if (safetyResult.flagged) {
+      await prisma.safetyEvent.create({
+        data: {
+          postId: updated.id,
+          keywordMatched: safetyResult.matchedCategory!,
+          resourceShown: true,
+        },
+      });
+      logger.info("Safety flag triggered on edit", { postId: updated.id, userId: req.userId });
+    }
+
+    getIO().to(`group:${post.groupId}`).emit("post_edited", { id: updated.id, content: updated.content });
+
+    res.json({ id: updated.id, content: updated.content });
+  } catch (error) {
+    logger.error("Edit post error", { error });
+    res.status(500).json({ error: "Failed to edit post" });
+  }
+}
+
+export async function deletePost(req: AuthRequest, res: Response) {
+  try {
+    const postId = req.params.postId as string;
+
+    const post = await prisma.post.findUnique({ where: { id: postId } });
+    if (!post || post.deleted) return res.status(404).json({ error: "Post not found" });
+    if (post.userId !== req.userId) return res.status(403).json({ error: "Not your post" });
+
+    // Soft delete — keeps row + any linked reports/safety events intact for moderation history
+    await prisma.post.update({
+      where: { id: postId },
+      data: { deleted: true, content: null },
+    });
+
+    getIO().to(`group:${post.groupId}`).emit("post_deleted", { id: postId });
+
+    res.status(204).send();
+  } catch (error) {
+    logger.error("Delete post error", { error });
+    res.status(500).json({ error: "Failed to delete post" });
   }
 }
