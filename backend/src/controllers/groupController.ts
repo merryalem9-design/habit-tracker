@@ -48,6 +48,13 @@ export async function getFeed(req: AuthRequest, res: Response) {
     });
     if (!membership) return res.status(403).json({ error: "Not a member of this group" });
 
+    // Get list of users this person has blocked, to filter them out
+    const blocks = await prisma.userBlock.findMany({
+      where: { blockerId: req.userId },
+      select: { blockedId: true },
+    });
+    const blockedIds = new Set(blocks.map((b) => b.blockedId));
+
     const posts = await prisma.post.findMany({
       where: { groupId, flagged: false },
       include: {
@@ -63,14 +70,16 @@ export async function getFeed(req: AuthRequest, res: Response) {
     });
     const aliasMap = new Map(membershipsInGroup.map((m) => [m.userId, m.aliasInGroup]));
 
-    const shaped = posts.map((p) => ({
-      id: p.id,
-      content: p.content,
-      checkInId: p.checkInId,
-      createdAt: p.createdAt,
-      alias: aliasMap.get(p.userId) ?? "Anonymous",
-      reactions: p.reactions,
-    }));
+    const shaped = posts
+      .filter((p) => !blockedIds.has(p.userId)) // hide posts from blocked users
+      .map((p) => ({
+        id: p.id,
+        content: p.content,
+        checkInId: p.checkInId,
+        createdAt: p.createdAt,
+        alias: aliasMap.get(p.userId) ?? "Anonymous",
+        reactions: p.reactions,
+      }));
 
     res.json(shaped);
   } catch (error) {

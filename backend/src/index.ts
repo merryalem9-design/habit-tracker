@@ -4,11 +4,14 @@ import { createServer } from "http";
 import cors from "cors";
 import morgan from "morgan";
 import authRoutes from "./routes/authRoutes";
+import userRoutes from "./routes/userRoutes";
 import habitRoutes from "./routes/habitRoutes";
 import checkInRoutes from "./routes/checkInRoutes";
 import statsRoutes from "./routes/statsRoutes";
 import groupRoutes from "./routes/groupRoutes";
 import postRoutes from "./routes/postRoutes";
+import reportRoutes from "./routes/reportRoutes";
+
 import { initSocket } from "./socket";
 import logger from "./lib/logger";
 
@@ -27,11 +30,14 @@ app.use(express.json());
 app.use(morgan("dev"));
 
 app.use("/api/auth", authRoutes);
+app.use("/api/users", userRoutes);
 app.use("/api/habits", habitRoutes);
 app.use("/api/checkins", checkInRoutes);
 app.use("/api", statsRoutes);
 app.use("/api/groups", groupRoutes);
 app.use("/api/posts", postRoutes);
+app.use("/api/reports", reportRoutes);
+
 
 app.get("/", (req, res) => {
   res.json({ status: "Habit tracker API is running" });

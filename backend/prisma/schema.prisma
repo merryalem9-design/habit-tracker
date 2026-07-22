@@ -45,12 +45,14 @@ enum NotificationType {
 }
 //Models
 model User {
-  id String @id @default(uuid()) 
+  id String @id @default(uuid())
   email String @unique
   passwordHash String @map("password_hash")
   displayAlias String @map("display_alias")
   avatarSeed String @map("avatar_seed")
   timezone String
+  emergencyContactName String? @map("emergency_contact_name")
+  emergencyContactPhone String? @map("emergency_contact_phone")
   createdAt DateTime @default(now()) @map("created_at")
 
   //relation fields
@@ -60,6 +62,8 @@ model User {
   posts Post[]
   reactions Reaction[]
   reportsField Report[] @relation("ReporterRelation")
+  blocksInitiated UserBlock[] @relation("BlockerRelation")
+  blocksReceived  UserBlock[] @relation("BlockedRelation")
   preferences UserPreferences?
   distractionLogs DistractionLog[]
   notifications Notification[]
@@ -190,6 +194,19 @@ model Report {
   reporter User @relation("ReporterRelation", fields: [reporterId], references: [id])
   post Post @relation(fields: [postId], references: [id])
 @@map("reports")
+}
+
+model UserBlock {
+  id          String   @id @default(uuid())
+  blockerId   String   @map("blocker_id")
+  blockedId   String   @map("blocked_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  blocker User @relation("BlockerRelation", fields: [blockerId], references: [id])
+  blocked User @relation("BlockedRelation", fields: [blockedId], references: [id])
+
+  @@unique([blockerId, blockedId])
+  @@map("user_blocks")
 }
 model SafetyEvent {
   id String @id @default(uuid())

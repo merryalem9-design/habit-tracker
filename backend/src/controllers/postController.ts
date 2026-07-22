@@ -2,6 +2,8 @@ import { Response } from "express";
 import prisma from "../prismaClient";
 import { AuthRequest } from "../middleware/authMiddleware";
 import { getIO } from "../socket";
+import { checkContent } from "../services/safetyService";
+import { buildSupportResponse } from "../lib/crisisResources";
 import logger from "../lib/logger";
 
 const MAX_POST_LENGTH = 280;
@@ -20,9 +22,41 @@ export async function createPost(req: AuthRequest, res: Response) {
       return res.status(400).json({ error: `Posts are limited to ${MAX_POST_LENGTH} characters` });
     }
 
+    const safetyResult = checkContent(content ?? "");
+
     const post = await prisma.post.create({
-      data: { groupId, checkInId: checkInId ?? null, userId: req.userId!, content: content ?? null },
+      data: {
+        groupId,
+        checkInId: checkInId ?? null,
+        userId: req.userId!,
+        content: content ?? null,
+        flagged: safetyResult.flagged,
+        flaggedReason: safetyResult.matchedCategory,
+      },
     });
+
+    let supportResponse = null;
+
+    if (safetyResult.flagged) {
+      await prisma.safetyEvent.create({
+        data: {
+          postId: post.id,
+          keywordMatched: safetyResult.matchedCategory!,
+          resourceShown: true,
+        },
+      });
+      logger.info("Safety flag triggered", { postId: post.id, userId: req.userId, category: safetyResult.matchedCategory });
+
+      const user = await prisma.user.findUnique({
+        where: { id: req.userId },
+        select: { emergencyContactName: true, emergencyContactPhone: true },
+      });
+
+      supportResponse = buildSupportResponse({
+        name: user?.emergencyContactName ?? null,
+        phone: user?.emergencyContactPhone ?? null,
+      });
+    }
 
     const shaped = {
       id: post.id,
@@ -30,12 +64,15 @@ export async function createPost(req: AuthRequest, res: Response) {
       checkInId: post.checkInId,
       createdAt: post.createdAt,
       alias: membership.aliasInGroup,
-      reactions: [],
+      reactions: [] as unknown[],
     };
 
     getIO().to(`group:${groupId}`).emit("new_post", shaped);
 
-    res.status(201).json(shaped);
+    res.status(201).json({
+      post: shaped,
+      supportResources: supportResponse,
+    });
   } catch (error) {
     logger.error("Create post error", { error });
     res.status(500).json({ error: "Failed to create post" });

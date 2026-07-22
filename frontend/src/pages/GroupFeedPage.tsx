@@ -10,11 +10,19 @@ interface Post {
   createdAt: string;
   reactions: { reactionType: string }[];
 }
+interface SupportResource {
+  title: string;
+  message: string;
+  emergencyContact: { name: string; phone: string } | null;
+  distractMeSuggestion: { type: string; prompt: string };
+  fallbackResource: { name: string; description: string; url: string };
+}
 
 export default function GroupFeedPage() {
   const { groupId } = useParams();
   const [posts, setPosts] = useState<Post[]>([]);
   const [message, setMessage] = useState("");
+  const [supportResource, setSupportResource] = useState<SupportResource | null>(null);
   const socketRef = useRef(getSocket());
 
   useEffect(() => {
@@ -40,13 +48,48 @@ export default function GroupFeedPage() {
   async function handlePost(e: React.FormEvent) {
     e.preventDefault();
     if (!message.trim()) return;
-    await apiClient.post("/posts", { groupId, content: message });
+    const { data } = await apiClient.post("/posts", { groupId, content: message });
     setMessage("");
+    if (data.supportResources) {
+      setSupportResource(data.supportResources);
+    }
   }
 
   return (
     <div style={{ maxWidth: 500, margin: "20px auto", padding: "0 16px", color: "#F8FAFC" }}>
       <h2>Group Feed</h2>
+
+      {supportResource && (
+  <div style={{ background: "#3B1F1F", border: "1px solid #EF4444", borderRadius: 12, padding: 16, marginBottom: 16 }}>
+    <strong>{supportResource.title}</strong>
+    <p style={{ fontSize: 14 }}>{supportResource.message}</p>
+
+    {supportResource.emergencyContact && (
+      <div style={{ marginTop: 12, padding: 10, background: "#1F2937", borderRadius: 8 }}>
+        <div style={{ fontSize: 13, color: "#9CA3AF" }}>Call your emergency contact</div>
+        <div style={{ fontSize: 15, fontWeight: 600 }}>{supportResource.emergencyContact.name}</div>
+        <a href={`tel:${supportResource.emergencyContact.phone}`} style={{ color: "#93C5FD", fontSize: 14 }}>
+          {supportResource.emergencyContact.phone}
+        </a>
+      </div>
+    )}
+
+    <div style={{ marginTop: 12, padding: 10, background: "#1F2937", borderRadius: 8 }}>
+      <div style={{ fontSize: 13 }}>{supportResource.distractMeSuggestion.prompt}</div>
+      <button style={{ marginTop: 6 }}>Open Distract Me</button>
+    </div>
+
+    <div style={{ marginTop: 12, fontSize: 12, color: "#9CA3AF" }}>
+      <div>{supportResource.fallbackResource.name}</div>
+      <a href={supportResource.fallbackResource.url} target="_blank" rel="noopener noreferrer" style={{ color: "#93C5FD" }}>
+        {supportResource.fallbackResource.url}
+      </a>
+    </div>
+
+    <button onClick={() => setSupportResource(null)} style={{ marginTop: 12 }}>Dismiss</button>
+  </div>
+)}
+
       <form onSubmit={handlePost} style={{ marginBottom: 16 }}>
         <input
           value={message}
@@ -57,6 +100,7 @@ export default function GroupFeedPage() {
         />
         <button type="submit" style={{ marginTop: 8 }}>Post</button>
       </form>
+
       {posts.map((post) => (
         <div key={post.id} style={{ border: "1px solid #333", borderRadius: 8, padding: 12, marginBottom: 8 }}>
           <strong>{post.alias}</strong>
