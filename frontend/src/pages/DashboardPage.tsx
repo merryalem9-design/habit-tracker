@@ -1,14 +1,23 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 import { getHabits, createHabit, checkIn } from "../lib/habitApi";
 import { getMyGroups, joinGroup } from "../lib/groupApi";
 import { useAuthStore } from "../store/authStore";
+import { GradientButton } from "../components/ui/GradientButton";
+import { BottomSheet } from "../components/ui/BottomSheet";
+import { AnimatedCounter } from "../components/ui/AnimatedCounter";
+import { HabitCard } from "../components/HabitCard";
+import toast from "react-hot-toast";
 
 interface Habit {
   id: string;
   title: string;
   category: string;
-  streak: { currentStreak: number; longestStreak: number } | null;
+  streak?: { currentStreak: number; longestStreak: number } | null;
+  _count?: { checkIns: number };
+  checkInsToday?: boolean;
+  icon?: string;
 }
 
 interface MyGroup {
@@ -22,43 +31,37 @@ export default function DashboardPage() {
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const navigate = useNavigate();
   const logout = useAuthStore((s) => s.logout);
   const user = useAuthStore((s) => s.user);
 
+  const loadData = async () => {
+    try {
+      const [habitsData, groupsData] = await Promise.all([
+        getHabits(),
+        getMyGroups(),
+      ]);
+      setHabits(habitsData);
+      setMyGroups(groupsData);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   useEffect(() => {
-    let isMounted = true;
-    async function loadHabits() {
-      try {
-        const data = await getHabits();
-        if (isMounted) setHabits(data);
-      } catch (err) {
-        console.error("Failed to fetch habits:", err);
-      }
-    }
-    async function loadGroups() {
-      try {
-        const data = await getMyGroups();
-        if (isMounted) setMyGroups(data);
-      } catch (err) {
-        console.error("Failed to fetch groups:", err);
-      }
-    }
-    loadHabits();
-    loadGroups();
-    return () => { isMounted = false; };
+    loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function handleRefresh() {
-    try {
-      const data = await getHabits();
-      setHabits(data);
-    } catch (err) {
-      console.error("Failed to fetch habits:", err);
-    }
-  }
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await loadData();
+    setIsRefreshing(false);
+    toast.success("Dashboard refreshed");
+  };
 
-  async function handleCreate(e: React.FormEvent) {
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
     try {
@@ -66,433 +69,189 @@ export default function DashboardPage() {
       setTitle("");
       setCategory("");
       setIsModalOpen(false);
-      await handleRefresh();
+      await loadData();
+      toast.success("Habit created! 🎯");
     } catch (err) {
-      console.error("Failed to create habit:", err);
+      toast.error("Failed to create habit");
     }
-  }
+  };
 
-  async function handleCheckIn(habitId: string, status: "success" | "relapse") {
+  const handleCheckIn = async (habitId: string, status: "success" | "relapse" | "skipped") => {
     try {
       await checkIn(habitId, status);
-      await handleRefresh();
+      await loadData();
+      toast.success(status === "success" ? "💪 Great job!" : "🔄 Tomorrow is a new day");
     } catch (err) {
-      console.error("Failed to log check-in:", err);
+      toast.error("Check-in failed");
     }
-  }
+  };
 
-  async function handleGoToGroup(category: string) {
+  const handleGoToGroup = async (category: string) => {
     try {
       const membership = await joinGroup(category);
       navigate(`/groups/${membership.groupId}`);
     } catch (err) {
-      console.error("Failed to join group:", err);
+      toast.error("Could not join group");
     }
-  }
+  };
 
-  // Calculate quick stats
-  const activeCount = habits.length;
-  const bestStreak = habits.reduce((max, h) => Math.max(max, h.streak?.longestStreak || 0), 0);
+  const bestStreak = habits.reduce(
+    (max, h) => Math.max(max, h.streak?.longestStreak || 0),
+    0
+  );
+  const totalCheckIns = habits.reduce(
+    (sum, h) => sum + (h._count?.checkIns || 0),
+    0
+  );
 
   return (
-    <div style={styles.appViewport}>
-      <div style={styles.mobileContainer}>
-        {/* Header */}
-        <header style={styles.header}>
+    <div className="relative min-h-screen bg-brand-dark pb-32">
+      <div className="fixed inset-0 -z-10 bg-linear-to-br from-brand-dark via-purple-900/20 to-pink-900/20">
+        <motion.div
+          className="absolute inset-0 opacity-30"
+          animate={{
+            background: [
+              "radial-gradient(circle at 20% 20%, #A855F7, transparent 70%)",
+              "radial-gradient(circle at 80% 80%, #EC4899, transparent 70%)",
+              "radial-gradient(circle at 40% 60%, #3B82F6, transparent 70%)",
+            ],
+          }}
+          transition={{ duration: 15, repeat: Infinity, repeatType: "mirror" }}
+        />
+      </div>
+
+      <div className="mx-auto max-w-md px-4 pt-6">
+        <motion.div
+          initial={{ y: -20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          className="flex items-center justify-between"
+        >
           <div>
-            <span style={styles.greetingTag}>Welcome back</span>
-            <h1 style={styles.userName}>{user?.displayAlias || "Streak Master"}</h1>
+            <p className="text-xs uppercase tracking-wider text-gray-400">
+              Welcome back
+            </p>
+            <h1 className="bg-linear-to-r from-brand-purple to-brand-pink bg-clip-text text-2xl font-bold text-transparent">
+              {user?.displayAlias || "Streak Master"}
+            </h1>
           </div>
-          <button onClick={logout} style={styles.iconButton} aria-label="Log out">
-            ⚡️
-          </button>
-        </header>
+          <motion.button
+            whileTap={{ scale: 0.9 }}
+            onClick={logout}
+            className="rounded-full bg-white/10 p-3 text-xl backdrop-blur-sm"
+          >
+            ⚡
+          </motion.button>
+        </motion.div>
 
-        {/* Quick Stats Widget */}
-        <section style={styles.statsCard}>
-          <div style={styles.statBox}>
-            <span style={styles.statValue}>{activeCount}</span>
-            <span style={styles.statLabel}>Active Habits</span>
-          </div>
-          <div style={styles.statDivider} />
-          <div style={styles.statBox}>
-            <span style={styles.statValue}>{bestStreak}🔥</span>
-            <span style={styles.statLabel}>Best Streak</span>
-          </div>
-        </section>
+        <motion.div
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.1 }}
+          className="mt-6 grid grid-cols-3 gap-3 rounded-2xl bg-white/5 p-4 backdrop-blur-sm"
+        >
+          <AnimatedCounter value={habits.length} label="Habits" icon="📋" />
+          <AnimatedCounter value={bestStreak} label="Best Streak" icon="🔥" />
+          <AnimatedCounter value={totalCheckIns} label="Check‑ins" icon="✅" />
+        </motion.div>
 
-        {/* Your Groups */}
         {myGroups.length > 0 && (
-          <section style={{ marginBottom: "24px" }}>
-            <h2 style={{ fontSize: "16px", marginBottom: "10px" }}>Your Groups</h2>
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          <motion.div
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.2 }}
+            className="mt-6"
+          >
+            <p className="mb-2 text-sm font-medium text-gray-400">Your Groups</p>
+            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
               {myGroups.map((m) => (
                 <button
                   key={m.id}
                   onClick={() => navigate(`/groups/${m.group.id}`)}
-                  style={{
-                    textAlign: "left",
-                    padding: "12px 16px",
-                    background: "rgba(255,255,255,0.05)",
-                    border: "1px solid rgba(255,255,255,0.1)",
-                    borderRadius: "12px",
-                    color: "#F8FAFC",
-                    cursor: "pointer",
-                    fontSize: "14px",
-                  }}
+                  className="whitespace-nowrap rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/20"
                 >
-                  {m.group.category} group →
+                  {m.group.category} →
                 </button>
               ))}
             </div>
-          </section>
+          </motion.div>
         )}
 
-        {/* Section Title */}
-        <div style={styles.sectionHeader}>
-          <h2>Today's Habits</h2>
-          <span style={styles.badge}>{habits.length} total</span>
-        </div>
+        <motion.div
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.3 }}
+          className="mt-6 space-y-3"
+        >
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Today's Habits</h2>
+            <button
+              onClick={handleRefresh}
+              className="text-sm text-gray-400 transition hover:text-white"
+            >
+              {isRefreshing ? "⟳" : "↻"}
+            </button>
+          </div>
 
-        {/* Habit Cards Container */}
-        <main style={styles.habitList}>
           {habits.length === 0 ? (
-            <div style={styles.emptyState}>
-              <p>No habits yet. Tap the button below to build your first one!</p>
+            <div className="flex flex-col items-center justify-center rounded-3xl border border-white/5 bg-white/5 p-10">
+              <span className="text-5xl">🌱</span>
+              <p className="mt-3 text-center text-gray-400">
+                No habits yet.<br />Start your first one!
+              </p>
             </div>
           ) : (
-            habits.map((habit) => (
-              <div key={habit.id} style={styles.habitCard}>
-                <div style={styles.habitInfo}>
-                  <span style={styles.categoryBadge}>{habit.category}</span>
-                  <h3 style={styles.habitTitle}>{habit.title}</h3>
-                  <div style={styles.streakPill}>
-                    🔥 <strong>{habit.streak?.currentStreak ?? 0}</strong> day streak
-                  </div>
-                </div>
-
-                <div style={styles.actionGroup}>
-                  <button
-                    onClick={() => handleCheckIn(habit.id, "success")}
-                    style={{ ...styles.actionBtn, ...styles.successBtn }}
-                  >
-                    Done
-                  </button>
-                  <button
-                    onClick={() => handleCheckIn(habit.id, "relapse")}
-                    style={{ ...styles.actionBtn, ...styles.relapseBtn }}
-                  >
-                    Miss
-                  </button>
-                  <button
-                    onClick={() => handleGoToGroup(habit.category)}
-                    style={{ ...styles.actionBtn, backgroundColor: "rgba(168, 85, 247, 0.15)", color: "#A855F7" }}
-                  >
-                    Group
-                  </button>
-                </div>
-              </div>
+            habits.map((habit, i) => (
+              <HabitCard
+                key={habit.id}
+                habit={habit}
+                index={i}
+                onCheckIn={handleCheckIn}
+                onGroup={handleGoToGroup}
+              />
             ))
           )}
-        </main>
-
-        {/* Floating Action Button (FAB) */}
-        <button onClick={() => setIsModalOpen(true)} style={styles.fab}>
-          +
-        </button>
-
-        {/* Bottom Sheet Modal */}
-        {isModalOpen && (
-          <div style={styles.modalOverlay} onClick={() => setIsModalOpen(false)}>
-            <div style={styles.bottomSheet} onClick={(e) => e.stopPropagation()}>
-              <div style={styles.sheetHandle} />
-              <h2 style={styles.sheetTitle}>New Habit</h2>
-              <form onSubmit={handleCreate}>
-                <input
-                  placeholder="Habit Title (e.g. Read 20 mins)"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  style={styles.input}
-                  autoFocus
-                  required
-                />
-                <input
-                  placeholder="Category (e.g. Health, Study)"
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  style={styles.input}
-                />
-                <div style={styles.modalButtons}>
-                  <button type="button" onClick={() => setIsModalOpen(false)} style={styles.cancelBtn}>
-                    Cancel
-                  </button>
-                  <button type="submit" style={styles.saveBtn}>
-                    Create Habit
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+        </motion.div>
       </div>
+
+      <motion.button
+        whileTap={{ scale: 0.9 }}
+        whileHover={{ scale: 1.05 }}
+        onClick={() => setIsModalOpen(true)}
+        className="fixed bottom-8 left-1/2 -translate-x-1/2 rounded-full bg-linear-to-r from-brand-purple to-brand-pink p-4 text-3xl shadow-2xl shadow-brand-purple/50 transition hover:shadow-brand-pink/50"
+      >
+        +
+      </motion.button>
+
+      <BottomSheet isOpen={isModalOpen} onClose={() => setIsModalOpen(false)}>
+        <h2 className="text-xl font-bold">New Habit</h2>
+        <form onSubmit={handleCreate} className="mt-4 space-y-3">
+          <input
+            placeholder="Habit title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-gray-500 focus:border-brand-purple focus:outline-none"
+            autoFocus
+          />
+          <input
+            placeholder="Category (optional)"
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-gray-500 focus:border-brand-purple focus:outline-none"
+          />
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(false)}
+              className="flex-1 rounded-xl border border-white/10 py-3 text-gray-400 transition hover:bg-white/5"
+            >
+              Cancel
+            </button>
+            <GradientButton type="submit" className="flex-1">
+              Create
+            </GradientButton>
+          </div>
+        </form>
+      </BottomSheet>
     </div>
   );
 }
-
-// Mobile-Optimized Design Tokens
-const styles: Record<string, React.CSSProperties> = {
-  appViewport: {
-    minHeight: "100vh",
-    backgroundColor: "#0F172A",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-    color: "#F8FAFC",
-  },
-  mobileContainer: {
-    width: "100%",
-    maxWidth: "430px",
-    minHeight: "100vh",
-    backgroundColor: "#1E293B",
-    padding: "24px 20px 100px 20px",
-    boxSizing: "border-box",
-    position: "relative",
-    display: "flex",
-    flexDirection: "column",
-    boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5)",
-  },
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: "20px",
-  },
-  greetingTag: {
-    fontSize: "12px",
-    color: "#94A3B8",
-    textTransform: "uppercase",
-    letterSpacing: "1px",
-    fontWeight: 600,
-  },
-  userName: {
-    fontSize: "24px",
-    fontWeight: "700",
-    margin: "4px 0 0 0",
-    background: "linear-gradient(135deg, #A855F7, #EC4899)",
-    WebkitBackgroundClip: "text",
-    WebkitTextFillColor: "transparent",
-  },
-  iconButton: {
-    background: "rgba(255, 255, 255, 0.05)",
-    border: "1px solid rgba(255, 255, 255, 0.1)",
-    borderRadius: "50%",
-    width: "42px",
-    height: "42px",
-    cursor: "pointer",
-    fontSize: "18px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  statsCard: {
-    background: "linear-gradient(135deg, rgba(168, 85, 247, 0.15), rgba(236, 72, 153, 0.15))",
-    border: "1px solid rgba(255, 255, 255, 0.1)",
-    borderRadius: "20px",
-    padding: "16px 20px",
-    display: "flex",
-    justifyContent: "space-around",
-    alignItems: "center",
-    marginBottom: "28px",
-    backdropFilter: "blur(10px)",
-  },
-  statBox: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-  },
-  statValue: {
-    fontSize: "22px",
-    fontWeight: "800",
-    color: "#FFF",
-  },
-  statLabel: {
-    fontSize: "11px",
-    color: "#CBD5E1",
-    marginTop: "2px",
-  },
-  statDivider: {
-    width: "1px",
-    height: "30px",
-    backgroundColor: "rgba(255, 255, 255, 0.15)",
-  },
-  sectionHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: "16px",
-  },
-  badge: {
-    fontSize: "12px",
-    backgroundColor: "rgba(255, 255, 255, 0.1)",
-    padding: "4px 10px",
-    borderRadius: "12px",
-    color: "#94A3B8",
-  },
-  habitList: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "14px",
-  },
-  emptyState: {
-    textAlign: "center",
-    padding: "40px 20px",
-    color: "#64748B",
-    fontSize: "14px",
-  },
-  habitCard: {
-    background: "rgba(30, 41, 59, 0.7)",
-    border: "1px solid rgba(255, 255, 255, 0.08)",
-    borderRadius: "18px",
-    padding: "16px",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.2)",
-    gap: "10px",
-  },
-  habitInfo: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "4px",
-  },
-  categoryBadge: {
-    fontSize: "10px",
-    textTransform: "uppercase",
-    letterSpacing: "0.8px",
-    color: "#A855F7",
-    fontWeight: "700",
-  },
-  habitTitle: {
-    margin: 0,
-    fontSize: "16px",
-    fontWeight: "600",
-  },
-  streakPill: {
-    fontSize: "12px",
-    color: "#F59E0B",
-    marginTop: "4px",
-  },
-  actionGroup: {
-    display: "flex",
-    gap: "8px",
-    flexWrap: "wrap",
-    justifyContent: "flex-end",
-  },
-  actionBtn: {
-    border: "none",
-    borderRadius: "12px",
-    padding: "8px 14px",
-    fontWeight: "600",
-    fontSize: "13px",
-    cursor: "pointer",
-    transition: "transform 0.1s active",
-  },
-  successBtn: {
-    backgroundColor: "#10B981",
-    color: "#FFF",
-  },
-  relapseBtn: {
-    backgroundColor: "rgba(239, 68, 68, 0.15)",
-    color: "#EF4444",
-  },
-  fab: {
-    position: "fixed",
-    bottom: "30px",
-    right: "calc(50% - 190px)",
-    width: "56px",
-    height: "56px",
-    borderRadius: "28px",
-    background: "linear-gradient(135deg, #A855F7, #EC4899)",
-    color: "#FFF",
-    border: "none",
-    fontSize: "28px",
-    fontWeight: "300",
-    cursor: "pointer",
-    boxShadow: "0 10px 25px -5px rgba(236, 72, 153, 0.5)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  modalOverlay: {
-    position: "fixed",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(0, 0, 0, 0.6)",
-    backdropFilter: "blur(4px)",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "flex-end",
-    zIndex: 100,
-  },
-  bottomSheet: {
-    backgroundColor: "#1E293B",
-    width: "100%",
-    maxWidth: "430px",
-    borderTopLeftRadius: "24px",
-    borderTopRightRadius: "24px",
-    padding: "20px 24px 32px 24px",
-    boxSizing: "border-box",
-    borderTop: "1px solid rgba(255, 255, 255, 0.1)",
-  },
-  sheetHandle: {
-    width: "36px",
-    height: "4px",
-    backgroundColor: "#475569",
-    borderRadius: "2px",
-    margin: "0 auto 16px auto",
-  },
-  sheetTitle: {
-    margin: "0 0 16px 0",
-    fontSize: "18px",
-  },
-  input: {
-    width: "100%",
-    padding: "12px 16px",
-    backgroundColor: "#0F172A",
-    border: "1px solid #334155",
-    borderRadius: "12px",
-    color: "#FFF",
-    fontSize: "14px",
-    marginBottom: "12px",
-    boxSizing: "border-box",
-    outline: "none",
-  },
-  modalButtons: {
-    display: "flex",
-    gap: "12px",
-    marginTop: "8px",
-  },
-  cancelBtn: {
-    flex: 1,
-    padding: "12px",
-    backgroundColor: "transparent",
-    border: "1px solid #334155",
-    borderRadius: "12px",
-    color: "#94A3B8",
-    fontWeight: "600",
-    cursor: "pointer",
-  },
-  saveBtn: {
-    flex: 1,
-    padding: "12px",
-    background: "linear-gradient(135deg, #A855F7, #EC4899)",
-    border: "none",
-    borderRadius: "12px",
-    color: "#FFF",
-    fontWeight: "600",
-    cursor: "pointer",
-  },
-};

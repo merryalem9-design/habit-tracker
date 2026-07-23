@@ -1,9 +1,13 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import apiClient from "../lib/apiClient";
 import { getSocket } from "../lib/socket";
 import { editPost as editPostApi, deletePost as deletePostApi } from "../lib/postApi";
 import { useAuthStore } from "../store/authStore";
+import { GradientButton } from "../components/ui/GradientButton";
+import { ReactionButton } from "../components/ReactionButton";
+import toast from "react-hot-toast";
 
 interface Post {
   id: string;
@@ -63,7 +67,9 @@ export default function GroupFeedPage() {
     });
 
     socket.on("post_edited", (data: { id: string; content: string }) => {
-      setPosts((prev) => prev.map((p) => (p.id === data.id ? { ...p, content: data.content } : p)));
+      setPosts((prev) =>
+        prev.map((p) => (p.id === data.id ? { ...p, content: data.content } : p))
+      );
     });
 
     socket.on("post_deleted", (data: { id: string }) => {
@@ -78,7 +84,7 @@ export default function GroupFeedPage() {
     };
   }, [groupId]);
 
-  async function handlePost(e: React.FormEvent) {
+  const handlePost = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!message.trim()) return;
     try {
@@ -90,10 +96,11 @@ export default function GroupFeedPage() {
       }
     } catch (err) {
       console.error("Failed to post:", err);
+      toast.error("Could not post");
     }
-  }
+  };
 
-  async function handleDistractMe() {
+  const handleDistractMe = async () => {
     setDistractLoading(true);
     setDistractResult(null);
     try {
@@ -102,7 +109,11 @@ export default function GroupFeedPage() {
       if (navigator.geolocation) {
         await new Promise<void>((resolve) => {
           navigator.geolocation.getCurrentPosition(
-            (pos) => { lat = pos.coords.latitude; lng = pos.coords.longitude; resolve(); },
+            (pos) => {
+              lat = pos.coords.latitude;
+              lng = pos.coords.longitude;
+              resolve();
+            },
             () => resolve(),
             { timeout: 3000 }
           );
@@ -112,172 +123,231 @@ export default function GroupFeedPage() {
       setDistractResult(data);
     } catch (err) {
       console.error("Distract Me failed:", err);
+      toast.error("Could not get suggestion");
     } finally {
       setDistractLoading(false);
     }
-  }
+  };
 
-  async function handleFeedback(logId: string, helped: boolean) {
+  const handleFeedback = async (logId: string, helped: boolean) => {
     try {
       await apiClient.post("/distract-me/feedback", { logId, helped });
       setFeedbackSent((prev) => ({ ...prev, [logId]: true }));
       if (!helped) await handleDistractMe();
     } catch (err) {
       console.error("Feedback failed:", err);
+      toast.error("Feedback failed");
     }
-  }
+  };
 
-  function startEdit(post: Post) {
+  const startEdit = (post: Post) => {
     setEditingPostId(post.id);
     setEditContent(post.content ?? "");
-  }
+  };
 
-  function cancelEdit() {
+  const cancelEdit = () => {
     setEditingPostId(null);
     setEditContent("");
-  }
+  };
 
-  async function handleSaveEdit(postId: string) {
+  const handleSaveEdit = async (postId: string) => {
     if (!editContent.trim()) return;
     try {
       await editPostApi(postId, editContent);
       setEditingPostId(null);
       setEditContent("");
+      toast.success("Post updated");
     } catch (err) {
       console.error("Failed to edit post:", err);
+      toast.error("Edit failed");
     }
-  }
+  };
 
-  async function handleDelete(postId: string) {
+  const handleDelete = async (postId: string) => {
     if (!window.confirm("Delete this post?")) return;
     try {
       await deletePostApi(postId);
+      toast.success("Post deleted");
     } catch (err) {
       console.error("Failed to delete post:", err);
+      toast.error("Delete failed");
     }
-  }
+  };
+
+  const handleReact = async (postId: string, emoji: string) => {
+    try {
+      await apiClient.post(`/posts/${postId}/react`, { reactionType: emoji });
+    } catch (err) {
+      console.error("Reaction failed:", err);
+    }
+  };
 
   return (
-    <div style={{ minHeight: "100vh", backgroundColor: "#0F172A", display: "flex", justifyContent: "center", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", color: "#F8FAFC" }}>
-      <div style={{ width: "100%", maxWidth: "500px", padding: "24px 16px 80px", boxSizing: "border-box" }}>
-        <button
-          onClick={() => navigate("/dashboard")}
-          style={{ background: "none", border: "none", color: "#94A3B8", fontSize: "14px", cursor: "pointer", marginBottom: "12px", padding: 0 }}
-        >
-          ← Back to Dashboard
-        </button>
+    <div className="relative min-h-screen bg-brand-dark pb-32">
+      <div className="mx-auto max-w-md px-4 pt-6">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigate("/dashboard")}
+            className="text-gray-400 transition hover:text-white"
+          >
+            ←
+          </button>
+          <h2 className="text-xl font-bold">Group Feed</h2>
+        </div>
 
-        <h2 style={{ fontSize: "22px", fontWeight: 700, marginBottom: "20px", color: "#F8FAFC" }}>Group Feed</h2>
+        <AnimatePresence>
+          {supportResource && (
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="mt-4 rounded-2xl border border-red-500/50 bg-red-950/30 p-4 backdrop-blur-sm"
+            >
+              <h3 className="font-bold text-red-400">{supportResource.title}</h3>
+              <p className="text-sm text-gray-300">{supportResource.message}</p>
+              {supportResource.emergencyContact && (
+                <div className="mt-2 rounded-xl bg-white/5 p-3">
+                  <p className="text-xs text-gray-400">Emergency Contact</p>
+                  <p className="font-medium">{supportResource.emergencyContact.name}</p>
+                  <a
+                    href={`tel:${supportResource.emergencyContact.phone}`}
+                    className="text-brand-purple"
+                  >
+                    {supportResource.emergencyContact.phone}
+                  </a>
+                </div>
+              )}
+              <GradientButton
+                onClick={handleDistractMe}
+                className="mt-3 w-full"
+                disabled={distractLoading}
+              >
+                {distractLoading ? "Loading..." : "Open Distract Me"}
+              </GradientButton>
 
-        {supportResource !== null && (
-          <div style={{ background: "#3B1F1F", border: "1px solid #EF4444", borderRadius: "16px", padding: "20px", marginBottom: "20px" }}>
-            <strong style={{ fontSize: "17px", color: "#FCA5A5", display: "block", marginBottom: "8px" }}>{supportResource.title}</strong>
-            <p style={{ fontSize: "14px", color: "#D1D5DB", margin: "0 0 16px", lineHeight: "1.5" }}>{supportResource.message}</p>
-
-            {supportResource.emergencyContact !== null && (
-              <div style={{ background: "#1F2937", borderRadius: "10px", padding: "12px", marginBottom: "12px" }}>
-                <div style={{ fontSize: "12px", color: "#9CA3AF", marginBottom: "6px" }}>Call your emergency contact</div>
-                <div style={{ fontSize: "15px", fontWeight: 600, color: "#F9FAFB", marginBottom: "4px" }}>{supportResource.emergencyContact!.name}</div>
-                <a href={`tel:${supportResource.emergencyContact!.phone}`} style={{ color: "#93C5FD", fontSize: "14px", textDecoration: "none" }}>
-                  {supportResource.emergencyContact!.phone}
-                </a>
-              </div>
-            )}
-
-            <div style={{ background: "#1F2937", borderRadius: "10px", padding: "12px", marginBottom: "12px" }}>
-              <div style={{ fontSize: "12px", color: "#9CA3AF", marginBottom: "6px" }}>{supportResource.distractMeSuggestion.prompt}</div>
-              <button onClick={handleDistractMe} disabled={distractLoading} style={{ width: "100%", padding: "10px", background: "linear-gradient(135deg, #A855F7, #EC4899)", border: "none", borderRadius: "10px", color: "#FFF", fontWeight: 600, fontSize: "14px", cursor: "pointer", marginTop: "6px" }}>
-                {distractLoading ? "Finding something..." : "Open Distract Me"}
-              </button>
-
-              {distractResult !== null && (
-                <div style={{ marginTop: "14px", paddingTop: "14px", borderTop: "1px solid #374151" }}>
-                  {(distractResult.suggestionType === "content" || distractResult.suggestionType === "activity") && distractResult.content && (
-                    <>
-                      <p style={{ fontSize: "14px", fontStyle: "italic", color: "#E5E7EB", lineHeight: "1.6", margin: "0 0 6px" }}>"{distractResult.content.text}"</p>
-                      {distractResult.content.source && (
-                        <p style={{ fontSize: "12px", color: "#9CA3AF", margin: "0 0 10px" }}>— {distractResult.content.source}</p>
-                      )}
-                    </>
+              {distractResult && (
+                <div className="mt-3 rounded-xl bg-white/5 p-3">
+                  {distractResult.content && (
+                    <blockquote className="text-sm italic text-gray-200">
+                      “{distractResult.content.text}”
+                    </blockquote>
                   )}
-
-                  {distractResult.suggestionType === "nearby_place" && distractResult.nearbyPlace && (
-                    <>
-                      <p style={{ fontSize: "15px", fontWeight: 600, color: "#F9FAFB", margin: "0 0 4px" }}>📍 {distractResult.nearbyPlace.name}</p>
-                      <p style={{ fontSize: "12px", color: "#9CA3AF", margin: "0 0 10px" }}>{distractResult.nearbyPlace.address}</p>
-                    </>
+                  {distractResult.nearbyPlace && (
+                    <div>
+                      <p className="font-medium">{distractResult.nearbyPlace.name}</p>
+                      <p className="text-xs text-gray-400">
+                        {distractResult.nearbyPlace.address}
+                      </p>
+                    </div>
                   )}
-
-                  {distractResult.suggestionType === "nearby_place" && !distractResult.nearbyPlace && (
-                    <p style={{ fontSize: "14px", color: "#E5E7EB", margin: "0 0 10px" }}>No nearby places found. Tap again for a different suggestion.</p>
-                  )}
-
-                  {distractResult.suggestionType === "ping_buddy" && (
-                    <p style={{ fontSize: "14px", color: "#E5E7EB", margin: "0 0 10px" }}>
-                      {distractResult.pingBuddy?.sent ? "Your group has been notified that you could use some support. 💙" : "You're not in a group yet — join one to enable buddy pings."}
+                  {distractResult.pingBuddy && (
+                    <p className="text-sm">
+                      {distractResult.pingBuddy.sent
+                        ? "💙 Support ping sent to your group"
+                        : "Join a group to ping buddies"}
                     </p>
                   )}
-
-                  {!feedbackSent[distractResult.logId] ? (
-                    <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
-                      <button onClick={() => handleFeedback(distractResult.logId, true)} style={{ flex: 1, padding: "8px", background: "rgba(16, 185, 129, 0.15)", border: "1px solid #10B981", borderRadius: "8px", color: "#10B981", fontSize: "13px", fontWeight: 600, cursor: "pointer" }}>Helped ✓</button>
-                      <button onClick={() => handleFeedback(distractResult.logId, false)} style={{ flex: 1, padding: "8px", background: "rgba(99, 102, 241, 0.15)", border: "1px solid #6366F1", borderRadius: "8px", color: "#A5B4FC", fontSize: "13px", fontWeight: 600, cursor: "pointer" }}>Try another →</button>
+                  {!feedbackSent[distractResult.logId] && (
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        onClick={() => handleFeedback(distractResult.logId, true)}
+                        className="flex-1 rounded-lg bg-emerald-500/20 py-1 text-emerald-300"
+                      >
+                        Helped
+                      </button>
+                      <button
+                        onClick={() => handleFeedback(distractResult.logId, false)}
+                        className="flex-1 rounded-lg bg-blue-500/20 py-1 text-blue-300"
+                      >
+                        Try again
+                      </button>
                     </div>
-                  ) : (
-                    <p style={{ fontSize: "13px", color: "#6EE7B7", marginTop: "10px", textAlign: "center" }}>Thanks for the feedback 💙</p>
                   )}
                 </div>
               )}
-            </div>
 
-            <div style={{ marginBottom: "12px" }}>
-              <div style={{ fontSize: "12px", color: "#9CA3AF", marginBottom: "4px" }}>{supportResource.fallbackResource.name}</div>
-              <p style={{ fontSize: "12px", color: "#9CA3AF", margin: "2px 0" }}>{supportResource.fallbackResource.description}</p>
-              <a href={supportResource.fallbackResource.url} target="_blank" rel="noopener noreferrer" style={{ color: "#93C5FD", fontSize: "14px", textDecoration: "none" }}>{supportResource.fallbackResource.url}</a>
-            </div>
+              <button
+                onClick={() => setSupportResource(null)}
+                className="mt-2 text-xs text-gray-500"
+              >
+                Dismiss
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-            <button onClick={() => { setSupportResource(null); setDistractResult(null); }} style={{ width: "100%", padding: "10px", background: "transparent", border: "1px solid #4B5563", borderRadius: "10px", color: "#9CA3AF", fontSize: "13px", fontWeight: 600, cursor: "pointer" }}>Dismiss</button>
-          </div>
-        )}
-
-        <form onSubmit={handlePost} style={{ marginBottom: "20px" }}>
-          <input value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Share a check-in or thought..." maxLength={280} style={{ width: "100%", padding: "12px 16px", backgroundColor: "#1E293B", border: "1px solid #334155", borderRadius: "12px", color: "#FFF", fontSize: "14px", marginBottom: "10px", boxSizing: "border-box", outline: "none" }} />
-          <button type="submit" style={{ width: "100%", padding: "12px", background: "linear-gradient(135deg, #A855F7, #EC4899)", border: "none", borderRadius: "12px", color: "#FFF", fontWeight: 600, fontSize: "14px", cursor: "pointer" }}>Post</button>
+        <form onSubmit={handlePost} className="mt-4 flex gap-2">
+          <input
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder="Share something..."
+            maxLength={280}
+            className="flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-white placeholder-gray-500 focus:border-brand-purple focus:outline-none"
+          />
+          <GradientButton type="submit" className="px-4 py-2 text-sm">
+            Post
+          </GradientButton>
         </form>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+        <div className="mt-6 space-y-4">
           {posts.map((post) => (
-            <div key={post.id} style={{ background: "#1E293B", border: "1px solid #334155", borderRadius: "12px", padding: "14px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                <strong style={{ fontSize: "14px", fontWeight: 700, color: "#A855F7", display: "block", marginBottom: "6px" }}>{post.alias}</strong>
+            <motion.div
+              key={post.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm"
+            >
+              <div className="flex items-start justify-between">
+                <div>
+                  <span className="font-bold text-brand-purple">{post.alias}</span>
+                  <p className="mt-1 text-sm text-gray-200">{post.content}</p>
+                  <span className="mt-1 text-xs text-gray-500">
+                    {new Date(post.createdAt).toLocaleString()}
+                  </span>
+                </div>
                 {currentUser?.id === post.userId && editingPostId !== post.id && (
-                  <div style={{ display: "flex", gap: "8px" }}>
-                    <button onClick={() => startEdit(post)} style={{ background: "none", border: "none", color: "#94A3B8", fontSize: "12px", cursor: "pointer", padding: 0 }}>Edit</button>
-                    <button onClick={() => handleDelete(post.id)} style={{ background: "none", border: "none", color: "#EF4444", fontSize: "12px", cursor: "pointer", padding: 0 }}>Delete</button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => startEdit(post)}
+                      className="text-xs text-gray-400 hover:text-white"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDelete(post.id)}
+                      className="text-xs text-red-400 hover:text-red-300"
+                    >
+                      Delete
+                    </button>
                   </div>
                 )}
               </div>
 
-              {editingPostId === post.id ? (
-                <div>
+              {editingPostId === post.id && (
+                <div className="mt-2 flex gap-2">
                   <input
                     value={editContent}
                     onChange={(e) => setEditContent(e.target.value)}
-                    maxLength={280}
-                    style={{ width: "100%", padding: "8px 12px", backgroundColor: "#0F172A", border: "1px solid #334155", borderRadius: "8px", color: "#FFF", fontSize: "14px", marginBottom: "8px", boxSizing: "border-box" }}
+                    className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-1 text-sm text-white"
                   />
-                  <div style={{ display: "flex", gap: "8px" }}>
-                    <button onClick={() => handleSaveEdit(post.id)} style={{ flex: 1, padding: "6px", background: "#A855F7", border: "none", borderRadius: "8px", color: "#FFF", fontSize: "12px", cursor: "pointer" }}>Save</button>
-                    <button onClick={cancelEdit} style={{ flex: 1, padding: "6px", background: "transparent", border: "1px solid #4B5563", borderRadius: "8px", color: "#94A3B8", fontSize: "12px", cursor: "pointer" }}>Cancel</button>
-                  </div>
+                  <button
+                    onClick={() => handleSaveEdit(post.id)}
+                    className="rounded-xl bg-brand-purple px-3 py-1 text-sm"
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={cancelEdit}
+                    className="rounded-xl bg-white/10 px-3 py-1 text-sm"
+                  >
+                    Cancel
+                  </button>
                 </div>
-              ) : (
-                <>
-                  <p style={{ fontSize: "14px", color: "#E2E8F0", margin: "0 0 8px", lineHeight: "1.5" }}>{post.content}</p>
-                  <small style={{ fontSize: "11px", color: "#64748B" }}>{new Date(post.createdAt).toLocaleString()}</small>
-                </>
               )}
-            </div>
+
+              <ReactionButton postId={post.id} onReact={handleReact} />
+            </motion.div>
           ))}
         </div>
       </div>
