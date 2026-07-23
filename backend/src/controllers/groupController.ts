@@ -48,7 +48,6 @@ export async function getFeed(req: AuthRequest, res: Response) {
     });
     if (!membership) return res.status(403).json({ error: "Not a member of this group" });
 
-    // Get list of users this person has blocked, to filter them out
     const blocks = await prisma.userBlock.findMany({
       where: { blockerId: req.userId },
       select: { blockedId: true },
@@ -56,7 +55,7 @@ export async function getFeed(req: AuthRequest, res: Response) {
     const blockedIds = new Set(blocks.map((b) => b.blockedId));
 
     const posts = await prisma.post.findMany({
-      where: { groupId, flagged: false, deleted: false } ,
+      where: { groupId, flagged: false, deleted: false },
       include: {
         reactions: true,
         user: { select: { id: true } },
@@ -71,20 +70,37 @@ export async function getFeed(req: AuthRequest, res: Response) {
     const aliasMap = new Map(membershipsInGroup.map((m) => [m.userId, m.aliasInGroup]));
 
     const shaped = posts
-  .filter((p) => !blockedIds.has(p.userId))
-  .map((p) => ({
-    id: p.id,
-    content: p.content,
-    checkInId: p.checkInId,
-    createdAt: p.createdAt,
-    alias: aliasMap.get(p.userId) ?? "Anonymous",
-    userId: p.userId,
-    reactions: p.reactions,
-  }));
+      .filter((p) => !blockedIds.has(p.userId))
+      .map((p) => ({
+        id: p.id,
+        content: p.content,
+        checkInId: p.checkInId,
+        createdAt: p.createdAt,
+        alias: aliasMap.get(p.userId) ?? "Anonymous",
+        userId: p.userId,
+        reactions: p.reactions,
+      }));
 
     res.json(shaped);
   } catch (error) {
     logger.error("Get feed error", { error });
     res.status(500).json({ error: "Failed to fetch feed" });
+  }
+}
+
+// ─── NEW: Match group by category ────────────────────────────────
+export async function matchGroup(req: AuthRequest, res: Response) {
+  try {
+    const { category } = req.query;
+    if (!category || typeof category !== "string") {
+      return res.status(400).json({ error: "category is required" });
+    }
+    const group = await prisma.group.findFirst({
+      where: { category, status: "active" },
+    });
+    res.json({ exists: !!group });
+  } catch (error) {
+    logger.error("Match group error", { error });
+    res.status(500).json({ error: "Failed to check group" });
   }
 }

@@ -5,6 +5,11 @@ import AuthPage from "./pages/AuthPage";
 import DashboardPage from "./pages/DashboardPage";
 import GroupFeedPage from "./pages/GroupFeedPage";
 import ProtectedRoute from "./components/ProtectedRoute";
+import ForgottenPasswordPage from "./pages/ForgotPasswordPage"; // ← matches your file name
+import ResetPasswordPage from "./pages/ResetPasswordPage";
+import ChatListPage from "./pages/ChatListPage";
+import ChatPage from "./pages/ChatPage";
+import DistractPage from "./pages/DistractPage";
 import "./App.css";
 
 function AppContent() {
@@ -13,6 +18,8 @@ function AppContent() {
     <AnimatePresence mode="wait">
       <Routes location={location} key={location.pathname}>
         <Route path="/login" element={<AuthPage />} />
+        <Route path="/forgot-password" element={<ForgottenPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route
           path="/dashboard"
           element={
@@ -26,6 +33,30 @@ function AppContent() {
           element={
             <ProtectedRoute>
               <GroupFeedPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/chat"
+          element={
+            <ProtectedRoute>
+              <ChatListPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/chat/:conversationId"
+          element={
+            <ProtectedRoute>
+              <ChatPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/distract"
+          element={
+            <ProtectedRoute>
+              <DistractPage />
             </ProtectedRoute>
           }
         />

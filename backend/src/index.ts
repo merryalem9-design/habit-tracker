@@ -12,6 +12,7 @@ import groupRoutes from "./routes/groupRoutes";
 import postRoutes from "./routes/postRoutes";
 import distractRoutes from "./routes/distractRoutes";
 import reportRoutes from "./routes/reportRoutes";
+import chatRoutes from "./routes/chatRoutes";
 
 import { initSocket } from "./socket";
 import logger from "./lib/logger";
@@ -39,6 +40,7 @@ app.use("/api/groups", groupRoutes);
 app.use("/api/posts", postRoutes);
 app.use("/api/distract-me", distractRoutes);
 app.use("/api/reports", reportRoutes);
+app.use("/api/chat", chatRoutes);
 
 
 app.get("/", (req, res) => {

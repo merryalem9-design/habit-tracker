@@ -68,6 +68,12 @@ model User {
   distractionLogs DistractionLog[]
   notifications Notification[]
   refreshTokens RefreshToken[]
+  chatMessage ChatMessage[]
+  user1Conversations Conversation[] @relation("User1Conversations")
+  user2Conversations Conversation[] @relation("User2Conversations")  
+  passwordResetToken PasswordResetToken[]
+  pairQueue PairQueue[]
+
 @@map("users") //the table name is users in the actual DB, not user
 }
 
@@ -128,14 +134,16 @@ habit Habit @relation(fields:[habitId], references:[id])
 @@map("streaks")
 }
 model Group {
-  id String @id @default(uuid())
-  category String
-  type GroupType
-  status GroupStatus @default(active)
-  createdAt DateTime @default(now()) @map("created_at")
-  
+  id          String   @id @default(uuid())
+  category    String
+  type        GroupType
+  status      GroupStatus @default(active)
+  createdAt   DateTime @default(now()) @map("created_at")
+
   memberships GroupMembership[]
-  posts Post[]
+  posts       Post[]
+  conversations Conversation[]   // ← add this line
+
   @@map("groups")
 }
 model GroupMembership {
@@ -269,4 +277,49 @@ model Notification {
   user User @relation(fields: [userId], references: [id])
 
   @@map("notifications")
+}
+model ChatMessage {
+  id             String   @id @default(uuid())
+  conversationId String   @map("conversation_id")
+  senderId       String   @map("sender_id")
+  content        String
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+  sender       User         @relation(fields: [senderId], references: [id])
+}
+
+model Conversation {
+  id          String        @id @default(uuid())
+  type        String
+  groupId     String?       @map("group_id")
+  user1Id     String?       @map("user1_id")
+  user2Id     String?       @map("user2_id")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+  messages    ChatMessage[]
+
+  group Group? @relation(fields: [groupId], references: [id])
+  user1 User?  @relation("User1Conversations", fields: [user1Id], references: [id])
+  user2 User?  @relation("User2Conversations", fields: [user2Id], references: [id])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model PairQueue {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  category  String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
 }

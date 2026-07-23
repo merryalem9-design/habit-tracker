@@ -8,6 +8,7 @@ import { GradientButton } from "../components/ui/GradientButton";
 import { BottomSheet } from "../components/ui/BottomSheet";
 import { AnimatedCounter } from "../components/ui/AnimatedCounter";
 import { HabitCard } from "../components/HabitCard";
+import apiClient from "../lib/apiClient";
 import toast from "react-hot-toast";
 
 interface Habit {
@@ -25,11 +26,31 @@ interface MyGroup {
   group: { id: string; category: string };
 }
 
+const QUIT_CATEGORIES = [
+  "Smoking",
+  "Alcohol",
+  "Sugar",
+  "Junk Food",
+  "Social Media",
+  "Pornography",
+  "Gambling",
+];
+const PRACTICE_CATEGORIES = [
+  "Exercise",
+  "Meditation",
+  "Reading",
+  "Journaling",
+  "Water Intake",
+  "Gratitude",
+  "Learning",
+];
+
 export default function DashboardPage() {
   const [habits, setHabits] = useState<Habit[]>([]);
   const [myGroups, setMyGroups] = useState<MyGroup[]>([]);
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("");
+  const [habitType, setHabitType] = useState<"quit" | "practice">("quit");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const navigate = useNavigate();
@@ -44,14 +65,16 @@ export default function DashboardPage() {
       ]);
       setHabits(habitsData);
       setMyGroups(groupsData);
-    } catch (err) {
-      console.error(err);
+    } catch (error) {
+      console.error(error);
     }
   };
 
   useEffect(() => {
-    loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const fetchData = async () => {
+      await loadData();
+    };
+    fetchData();
   }, []);
 
   const handleRefresh = async () => {
@@ -63,15 +86,32 @@ export default function DashboardPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) return;
+    if (!title.trim() || !category) {
+      toast.error("Please fill in all fields");
+      return;
+    }
     try {
-      await createHabit(title, category || "General");
+      await createHabit(title, category);
       setTitle("");
       setCategory("");
+      setHabitType("quit");
       setIsModalOpen(false);
       await loadData();
       toast.success("Habit created! 🎯");
-    } catch (err) {
+
+      const { data } = await apiClient.get(`/groups/match?category=${category}`);
+      if (data.exists) {
+        const confirmJoin = window.confirm(
+          `There's already a group for "${category}". Would you like to join it?`
+        );
+        if (confirmJoin) {
+          await joinGroup(category);
+          toast.success("Joined group! 👥");
+          const groupsData = await getMyGroups();
+          setMyGroups(groupsData);
+        }
+      }
+    } catch {
       toast.error("Failed to create habit");
     }
   };
@@ -81,7 +121,7 @@ export default function DashboardPage() {
       await checkIn(habitId, status);
       await loadData();
       toast.success(status === "success" ? "💪 Great job!" : "🔄 Tomorrow is a new day");
-    } catch (err) {
+    } catch {
       toast.error("Check-in failed");
     }
   };
@@ -90,7 +130,7 @@ export default function DashboardPage() {
     try {
       const membership = await joinGroup(category);
       navigate(`/groups/${membership.groupId}`);
-    } catch (err) {
+    } catch {
       toast.error("Could not join group");
     }
   };
@@ -134,13 +174,23 @@ export default function DashboardPage() {
               {user?.displayAlias || "Streak Master"}
             </h1>
           </div>
-          <motion.button
-            whileTap={{ scale: 0.9 }}
-            onClick={logout}
-            className="rounded-full bg-white/10 p-3 text-xl backdrop-blur-sm"
-          >
-            ⚡
-          </motion.button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => navigate("/chat")}
+              className="rounded-full bg-white/10 p-3 text-xl backdrop-blur-sm hover:bg-white/20 transition"
+              aria-label="Open chat inbox"
+            >
+              💬
+            </button>
+            <motion.button
+              whileTap={{ scale: 0.9 }}
+              onClick={logout}
+              className="rounded-full bg-white/10 p-3 text-xl backdrop-blur-sm hover:bg-white/20 transition"
+              aria-label="Log out"
+            >
+              ⚡
+            </motion.button>
+          </div>
         </motion.div>
 
         <motion.div
@@ -152,6 +202,20 @@ export default function DashboardPage() {
           <AnimatedCounter value={habits.length} label="Habits" icon="📋" />
           <AnimatedCounter value={bestStreak} label="Best Streak" icon="🔥" />
           <AnimatedCounter value={totalCheckIns} label="Check‑ins" icon="✅" />
+        </motion.div>
+
+        <motion.div
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.15 }}
+          className="mt-4"
+        >
+          <button
+            onClick={() => navigate("/distract")}
+            className="w-full rounded-xl bg-linear-to-r from-blue-500 to-purple-500 py-3 text-white font-semibold shadow-lg hover:shadow-blue-500/30 transition"
+          >
+            🧘 Need a break? (Distract Me)
+          </button>
         </motion.div>
 
         {myGroups.length > 0 && (
@@ -231,13 +295,48 @@ export default function DashboardPage() {
             onChange={(e) => setTitle(e.target.value)}
             className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-gray-500 focus:border-brand-purple focus:outline-none"
             autoFocus
+            required
           />
-          <input
-            placeholder="Category (optional)"
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setHabitType("quit")}
+              className={`flex-1 rounded-xl py-2 text-sm font-medium transition ${
+                habitType === "quit"
+                  ? "bg-brand-purple text-white"
+                  : "bg-white/5 text-gray-400 hover:text-white"
+              }`}
+            >
+              Quit
+            </button>
+            <button
+              type="button"
+              onClick={() => setHabitType("practice")}
+              className={`flex-1 rounded-xl py-2 text-sm font-medium transition ${
+                habitType === "practice"
+                  ? "bg-brand-purple text-white"
+                  : "bg-white/5 text-gray-400 hover:text-white"
+              }`}
+            >
+              Practice
+            </button>
+          </div>
+
+          <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-gray-500 focus:border-brand-purple focus:outline-none"
-          />
+            className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white focus:border-brand-purple focus:outline-none"
+            required
+          >
+            <option value="">Select category</option>
+            {(habitType === "quit" ? QUIT_CATEGORIES : PRACTICE_CATEGORIES).map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+
           <div className="flex gap-3 pt-2">
             <button
               type="button"
