@@ -27,7 +27,12 @@ const corsOptions = {
   credentials: true,
 };
 
-app.use(cors(corsOptions));
+app.use(cors({
+  origin: [
+    'http://localhost:5173', 
+    'https://your-vercel-app-name.vercel.app' 
+  ]
+}));
 app.use(express.json());
 app.use(morgan("dev"));
 

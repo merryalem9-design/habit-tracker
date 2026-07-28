@@ -9,7 +9,7 @@
     "start": "node dist/src/index.js",
     "migrate": "npx prisma migrate deploy",
     "seed": "npx prisma db seed"
-},
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
