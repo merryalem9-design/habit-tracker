@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import React from "react";
 
 interface GradientButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   children: React.ReactNode;
@@ -10,7 +11,7 @@ export function GradientButton({ children, className = "", ...props }: GradientB
     <motion.button
       whileTap={{ scale: 0.95 }}
       className={`relative overflow-hidden rounded-2xl bg-linear-to-r from-brand-purple to-brand-pink px-6 py-3 font-semibold text-white shadow-lg shadow-brand-purple/30 transition hover:shadow-xl hover:shadow-brand-purple/40 ${className}`}
-      {...props}
+      {...(props as React.ComponentPropsWithoutRef<typeof motion.button>)}
     >
       <span className="relative z-10 flex items-center justify-center gap-2">
         {children}

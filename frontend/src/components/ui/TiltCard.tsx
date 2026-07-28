@@ -1,4 +1,5 @@
-import { useSpring, animated } from "@react-spring/web";
+import React, { useRef } from "react";
+import { motion, useSpring } from "framer-motion";
 import { useGesture } from "@use-gesture/react";
 
 interface TiltCardProps {
@@ -7,41 +8,45 @@ interface TiltCardProps {
 }
 
 export function TiltCard({ children, className = "" }: TiltCardProps) {
-  const [spring, api] = useSpring(() => ({
-    rotateX: 0,
-    rotateY: 0,
-    scale: 1,
-    config: { mass: 5, tension: 350, friction: 40 },
-  }));
+  const ref = useRef<HTMLDivElement>(null);
 
-  const bind = useGesture(
+  // FIXED: Replaced 'tension' with 'stiffness' and 'friction' with 'damping' to match Framer Motion v11 types
+  const rotateX = useSpring(0, { mass: 0.1, stiffness: 300, damping: 20 });
+  const rotateY = useSpring(0, { mass: 0.1, stiffness: 300, damping: 20 });
+  const scale = useSpring(1, { mass: 0.1, stiffness: 300, damping: 20 });
+
+  useGesture(
     {
-      onMove: ({ xy: [x, y], target }) => {
-        const el = target as HTMLElement;
-        const rect = el.getBoundingClientRect();
-        const centerX = rect.left + rect.width / 2;
-        const centerY = rect.top + rect.height / 2;
-        const rotateY = ((x - centerX) / rect.width) * 8;
-        const rotateX = ((centerY - y) / rect.height) * 8;
-        api.start({ rotateX, rotateY, scale: 1.02 });
+      onMove: ({ offset: [x, y] }) => {
+        rotateX.set((y / 2) * -1);
+        rotateY.set(x / 2);
+        scale.set(1.05);
       },
-      onLeave: () => api.start({ rotateX: 0, rotateY: 0, scale: 1 }),
+      onHover: ({ active }) => {
+        if (!active) {
+          rotateX.set(0);
+          rotateY.set(0);
+          scale.set(1);
+        }
+      },
     },
     {
-      target: undefined,
+      target: ref,
     }
   );
 
   return (
-    <animated.div
-      {...bind()}
+    <motion.div
+      ref={ref}
       style={{
-        ...spring,
-        transformPerspective: 800,
+        rotateX,
+        rotateY,
+        scale,
+        perspective: 800,
       }}
-      className={className}
+      className={`relative overflow-hidden rounded-xl shadow-xl ${className}`}
     >
       {children}
-    </animated.div>
+    </motion.div>
   );
 }
