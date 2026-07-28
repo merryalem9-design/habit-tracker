@@ -30,7 +30,7 @@ const corsOptions = {
 app.use(cors({
   origin: [
     'http://localhost:5173', 
-    'https://your-vercel-app-name.vercel.app' 
+    'https://habit-tracker-mqbc-puce.vercel.app' 
   ]
 }));
 app.use(express.json());
