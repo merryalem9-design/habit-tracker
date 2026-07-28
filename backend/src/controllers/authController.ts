@@ -1,39 +1,44 @@
 import { Request, Response } from "express";
 import bcrypt from "bcrypt";
-import crypto from "crypto";          // ← added for reset tokens
+import crypto from "crypto";
 import prisma from "../prismaClient";
 import { generateAlias } from "../utils/generateAlias";
 import logger from "../lib/logger";
 import { signAccessToken, generateRefreshToken, hashRefreshToken } from "../lib/tokens";
-import { sendResetCode } from "../services/emailService";  // ← new email service
+import { sendResetCode } from "../services/emailService"; // <--- THIS WAS MISSING
 
 const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 async function issueTokenPair(userId: string) {
   const accessToken = signAccessToken(userId);
   const { raw, hash } = generateRefreshToken();
-
   await prisma.refreshToken.create({
-    data: {
-      userId,
-      tokenHash: hash,
-      expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
-    },
+    data: { userId, tokenHash: hash, expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) },
   });
-
   return { accessToken, refreshToken: raw };
+}
+
+// Generate a unique 6-digit code
+async function generateUniqueVerificationCode(): Promise<string> {
+  let code: string = ''; 
+  let isUnique = false;
+  while (!isUnique) {
+    code = Math.floor(100000 + Math.random() * 900000).toString();
+    const existing = await prisma.user.findUnique({ where: { verificationCode: code } });
+    if (!existing) isUnique = true;
+  }
+  return code;
 }
 
 export async function signup(req: Request, res: Response) {
   try {
     const { email, password, timezone } = req.body;
-
     const existingUser = await prisma.user.findUnique({ where: { email } });
-    if (existingUser) {
-      return res.status(409).json({ error: "An account with this email already exists" });
-    }
+    if (existingUser) return res.status(409).json({ error: "An account with this email already exists" });
 
     const passwordHash = await bcrypt.hash(password, 10);
+    const verificationCode = await generateUniqueVerificationCode();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
     const user = await prisma.user.create({
       data: {
@@ -42,17 +47,18 @@ export async function signup(req: Request, res: Response) {
         displayAlias: generateAlias(),
         avatarSeed: Math.random().toString(36).substring(2, 10),
         timezone: timezone || "UTC",
+        isVerified: false,
+        verificationCode,
+        verificationCodeExpiresAt: expiresAt,
       },
     });
+    logger.info("User created (unverified)", { userId: user.id, email: user.email });
 
-    logger.info("User created", { userId: user.id, email: user.email });
-
-    const { accessToken, refreshToken } = await issueTokenPair(user.id);
-
+    // In production, you would send an email. In DEV, we return the code to the frontend so you can test!
     res.status(201).json({
-      accessToken,
-      refreshToken,
-      user: { id: user.id, email: user.email, displayAlias: user.displayAlias },
+      userId: user.id,
+      message: "User created. Please verify your account.",
+      verificationCode: process.env.NODE_ENV === 'development' ? verificationCode : undefined
     });
   } catch (error) {
     logger.error("Signup error", { error });
@@ -60,26 +66,78 @@ export async function signup(req: Request, res: Response) {
   }
 }
 
-export async function login(req: Request, res: Response) {
+export async function sendVerificationCode(req: Request, res: Response) {
   try {
-    const { email, password } = req.body;
-
+    const { email } = req.body;
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) {
-      return res.status(401).json({ error: "Invalid email or password" });
+    if (!user) return res.status(404).json({ error: "User not found" });
+    if (user.isVerified) return res.status(400).json({ error: "Account already verified" });
+
+    const newCode = await generateUniqueVerificationCode();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { verificationCode: newCode, verificationCodeExpiresAt: expiresAt },
+    });
+
+    res.json({
+      message: "New verification code sent to email.",
+      verificationCode: process.env.NODE_ENV === 'development' ? newCode : undefined
+    });
+  } catch (error) {
+    logger.error("Resend code error", { error });
+    res.status(500).json({ error: "Failed to resend code" });
+  }
+}
+
+export async function verifyAccount(req: Request, res: Response) {
+  try {
+    const { email, code } = req.body;
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) return res.status(404).json({ error: "User not found" });
+    if (user.isVerified) return res.status(400).json({ error: "Account already verified" });
+
+    if (user.verificationCode !== code) return res.status(400).json({ error: "Invalid verification code" });
+    if (user.verificationCodeExpiresAt && user.verificationCodeExpiresAt < new Date()) {
+      return res.status(400).json({ error: "Verification code expired. Please request a new one." });
     }
 
-    const passwordMatches = await bcrypt.compare(password, user.passwordHash);
-    if (!passwordMatches) {
-      return res.status(401).json({ error: "Invalid email or password" });
-    }
+    const updatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: { isVerified: true, verificationCode: null, verificationCodeExpiresAt: null },
+    });
 
-    const { accessToken, refreshToken } = await issueTokenPair(user.id);
-
+    const { accessToken, refreshToken } = await issueTokenPair(updatedUser.id);
     res.json({
       accessToken,
       refreshToken,
-      user: { id: user.id, email: user.email, displayAlias: user.displayAlias },
+      user: { id: updatedUser.id, email: updatedUser.email, displayAlias: updatedUser.displayAlias, isVerified: true },
+    });
+  } catch (error) {
+    logger.error("Verify account error", { error });
+    res.status(500).json({ error: "Failed to verify account" });
+  }
+}
+
+export async function login(req: Request, res: Response) {
+  try {
+    const { email, password } = req.body;
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) return res.status(401).json({ error: "Invalid email or password" });
+
+    if (!user.isVerified) {
+      return res.status(403).json({ error: "Account not verified", code: "ACCOUNT_NOT_VERIFIED" });
+    }
+
+    const passwordMatches = await bcrypt.compare(password, user.passwordHash);
+    if (!passwordMatches) return res.status(401).json({ error: "Invalid email or password" });
+
+    const { accessToken, refreshToken } = await issueTokenPair(user.id);
+    res.json({
+      accessToken,
+      refreshToken,
+      user: { id: user.id, email: user.email, displayAlias: user.displayAlias, isVerified: user.isVerified },
     });
   } catch (error) {
     logger.error("Login error", { error });
@@ -101,7 +159,6 @@ export async function refresh(req: Request, res: Response) {
       return res.status(401).json({ error: "Invalid or expired refresh token" });
     }
 
-    // rotate: revoke the old one, issue a new pair
     await prisma.refreshToken.update({ where: { id: stored.id }, data: { revoked: true } });
     const { accessToken, refreshToken: newRefreshToken } = await issueTokenPair(stored.userId);
 
@@ -128,8 +185,6 @@ export async function logout(req: Request, res: Response) {
     res.status(500).json({ error: "Failed to logout" });
   }
 }
-
-// ───── NEW: Password Reset ──────────────────────────────────────────
 
 export async function requestPasswordReset(req: Request, res: Response) {
   try {

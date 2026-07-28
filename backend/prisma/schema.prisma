@@ -54,6 +54,9 @@ model User {
   emergencyContactName String? @map("emergency_contact_name")
   emergencyContactPhone String? @map("emergency_contact_phone")
   createdAt DateTime @default(now()) @map("created_at")
+  isVerified                Boolean   @default(false) @map("is_verified")
+  verificationCode          String?   @unique @map("verification_code")
+  verificationCodeExpiresAt DateTime? @map("verification_code_expires_at")
 
   //relation fields
   habits Habit[] //habits, and its type is: an array of Habit records.
