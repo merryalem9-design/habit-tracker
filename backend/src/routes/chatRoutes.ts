@@ -6,6 +6,7 @@ import {
   sendMessage,
   requestPair,
   getQueueStatus,
+  markAsRead,
 } from "../controllers/chatController";
 
 const router = Router();
@@ -16,5 +17,6 @@ router.get("/:conversationId/messages", getMessages);
 router.post("/message", sendMessage);
 router.post("/pair", requestPair);
 router.get("/pair/status", getQueueStatus);
+router.post("/:conversationId/read", markAsRead);
 
 export default router;

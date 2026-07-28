@@ -54,7 +54,6 @@ export default function DashboardPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const navigate = useNavigate();
-  const logout = useAuthStore((s) => s.logout);
   const user = useAuthStore((s) => s.user);
 
   const loadData = async () => {
@@ -146,6 +145,7 @@ export default function DashboardPage() {
 
   return (
     <div className="relative min-h-screen bg-brand-dark pb-32">
+      {/* Ambient animated background */}
       <div className="fixed inset-0 -z-10 bg-linear-to-br from-brand-dark via-purple-900/20 to-pink-900/20">
         <motion.div
           className="absolute inset-0 opacity-30"
@@ -161,6 +161,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="mx-auto max-w-md px-4 pt-6">
+        {/* ─── Header (greeting only – no buttons) ──────────────── */}
         <motion.div
           initial={{ y: -20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
@@ -174,25 +175,9 @@ export default function DashboardPage() {
               {user?.displayAlias || "Streak Master"}
             </h1>
           </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => navigate("/chat")}
-              className="rounded-full bg-white/10 p-3 text-xl backdrop-blur-sm hover:bg-white/20 transition"
-              aria-label="Open chat inbox"
-            >
-              💬
-            </button>
-            <motion.button
-              whileTap={{ scale: 0.9 }}
-              onClick={logout}
-              className="rounded-full bg-white/10 p-3 text-xl backdrop-blur-sm hover:bg-white/20 transition"
-              aria-label="Log out"
-            >
-              ⚡
-            </motion.button>
-          </div>
         </motion.div>
 
+        {/* ─── Stats ──────────────────────────────────────────────── */}
         <motion.div
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
@@ -204,6 +189,7 @@ export default function DashboardPage() {
           <AnimatedCounter value={totalCheckIns} label="Check‑ins" icon="✅" />
         </motion.div>
 
+        {/* ─── Distract Me quick button ──────────────────────────── */}
         <motion.div
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
@@ -218,6 +204,7 @@ export default function DashboardPage() {
           </button>
         </motion.div>
 
+        {/* ─── Your Groups ────────────────────────────────────────── */}
         {myGroups.length > 0 && (
           <motion.div
             initial={{ y: 20, opacity: 0 }}
@@ -240,6 +227,7 @@ export default function DashboardPage() {
           </motion.div>
         )}
 
+        {/* ─── Habit List ─────────────────────────────────────────── */}
         <motion.div
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
@@ -277,15 +265,17 @@ export default function DashboardPage() {
         </motion.div>
       </div>
 
+      {/* ─── FAB to open habit modal ─────────────────────────────── */}
       <motion.button
         whileTap={{ scale: 0.9 }}
         whileHover={{ scale: 1.05 }}
         onClick={() => setIsModalOpen(true)}
-        className="fixed bottom-8 left-1/2 -translate-x-1/2 rounded-full bg-linear-to-r from-brand-purple to-brand-pink p-4 text-3xl shadow-2xl shadow-brand-purple/50 transition hover:shadow-brand-pink/50"
+        className="fixed bottom-24 left-1/2 -translate-x-1/2 rounded-full bg-linear-to-r from-brand-purple to-brand-pink p-4 text-3xl shadow-2xl shadow-brand-purple/50 transition hover:shadow-brand-pink/50"
       >
         +
       </motion.button>
 
+      {/* ─── Habit Creation Modal ────────────────────────────────── */}
       <BottomSheet isOpen={isModalOpen} onClose={() => setIsModalOpen(false)}>
         <h2 className="text-xl font-bold">New Habit</h2>
         <form onSubmit={handleCreate} className="mt-4 space-y-3">
@@ -298,6 +288,7 @@ export default function DashboardPage() {
             required
           />
 
+          {/* ─── Quit / Practice toggle ────────────────────────── */}
           <div className="flex gap-2">
             <button
               type="button"
@@ -323,6 +314,7 @@ export default function DashboardPage() {
             </button>
           </div>
 
+          {/* ─── Category dropdown ────────────────────────────── */}
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}

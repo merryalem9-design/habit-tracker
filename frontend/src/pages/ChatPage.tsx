@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import apiClient from "../lib/apiClient";
 import { getSocket } from "../lib/socket";
 import { useAuthStore } from "../store/authStore";
+import { useChatStore } from "../store/chatStore";
 
 interface Message {
   id: string;
@@ -12,35 +13,65 @@ interface Message {
   createdAt: string;
 }
 
+interface Conversation {
+  id: string;
+  type: "group" | "direct";
+  user1?: { id: string; displayAlias: string };
+  user2?: { id: string; displayAlias: string };
+  group?: { category: string };
+}
+
 export default function ChatPage() {
   const { conversationId } = useParams();
   const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
+  const [conversation, setConversation] = useState<Conversation | null>(null);
   const currentUser = useAuthStore((s) => s.user);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const markAsRead = useChatStore((s) => s.markAsRead);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const socket = getSocket();
 
-    // Fetch messages
-    apiClient.get(`/chat/${conversationId}/messages`).then((res) => setMessages(res.data));
+    const fetchData = async () => {
+      try {
+        const [msgRes, convRes] = await Promise.all([
+          apiClient.get(`/chat/${conversationId}/messages`),
+          apiClient.get("/chat/conversations"),
+        ]);
+        setMessages(msgRes.data);
+        const conv = convRes.data.find((c: Conversation) => c.id === conversationId);
+        setConversation(conv || null);
+        // Mark as read
+        if (conversationId) {
+          await markAsRead(conversationId);
+        }
+        // Scroll to bottom
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        }, 100);
+      } catch (error) {
+        console.error("Failed to load chat data:", error);
+      }
+    };
+    fetchData();
 
-    // Join conversation
     socket.emit("join_conversation", conversationId);
 
     const onNewMessage = (msg: Message) => {
       setMessages((prev) => [...prev, msg]);
-      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, 100);
     };
-
     socket.on("new_message", onNewMessage);
 
     return () => {
       socket.off("new_message", onNewMessage);
       socket.emit("leave_conversation", conversationId);
     };
-  }, [conversationId]);
+  }, [conversationId, markAsRead]);
 
   const sendMessage = () => {
     if (!input.trim()) return;
@@ -49,40 +80,54 @@ export default function ChatPage() {
     setInput("");
   };
 
+  const otherUser = conversation?.type === "direct"
+    ? (conversation.user1?.id === currentUser?.id ? conversation.user2 : conversation.user1)
+    : null;
+  const chatTitle = conversation?.type === "group"
+    ? conversation.group?.category || "Group Chat"
+    : otherUser?.displayAlias || "Chat";
+
   return (
     <div className="min-h-screen bg-brand-dark flex flex-col">
       {/* Header */}
-      <div className="bg-white/5 border-b border-white/10 p-4 flex items-center gap-3">
+      <div className="bg-white/5 border-b border-white/10 p-4 flex items-center gap-3 shrink-0">
         <button onClick={() => navigate("/chat")} className="text-gray-400 hover:text-white">
           ←
         </button>
-        <h1 className="text-white font-bold">Chat</h1>
+        <h1 className="text-white font-bold">{chatTitle}</h1>
       </div>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-        {messages.map((msg) => (
-          <motion.div
-            key={msg.id}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className={`max-w-[75%] p-3 rounded-2xl ${
-              msg.senderId === currentUser?.id
-                ? "bg-brand-purple text-white self-end ml-auto"
-                : "bg-white/10 text-gray-200 self-start"
-            }`}
-          >
-            <p className="text-sm">{msg.content}</p>
-            <span className="text-xs opacity-70 block mt-1">
-              {new Date(msg.createdAt).toLocaleTimeString()}
-            </span>
-          </motion.div>
-        ))}
-        <div ref={bottomRef} />
+        {messages.map((msg) => {
+          const isOwn = msg.senderId === currentUser?.id;
+          return (
+            <motion.div
+              key={msg.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={`flex flex-col ${isOwn ? "items-end" : "items-start"}`}
+            >
+              <div
+                className={`max-w-[75%] p-3 rounded-2xl ${
+                  isOwn
+                    ? "bg-brand-purple text-white rounded-br-none"
+                    : "bg-white/10 text-gray-200 rounded-bl-none"
+                }`}
+              >
+                <p className="wrap-break-word text-sm">{msg.content}</p>
+                <span className="text-[10px] opacity-70 block mt-1">
+                  {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+            </motion.div>
+          );
+        })}
+        <div ref={messagesEndRef} />
       </div>
 
       {/* Input */}
-      <div className="p-4 border-t border-white/10 bg-brand-dark/80 backdrop-blur-sm">
+      <div className="p-4 border-t border-white/10 bg-brand-dark/80 backdrop-blur-sm pb-24 shrink-0">
         <div className="flex gap-2">
           <input
             type="text"
@@ -94,7 +139,7 @@ export default function ChatPage() {
           />
           <button
             onClick={sendMessage}
-            className="bg-brand-purple px-5 py-3 rounded-xl text-white font-semibold"
+            className="bg-brand-purple px-5 py-3 rounded-xl text-white font-semibold hover:bg-brand-purple/80 transition shrink-0"
           >
             Send
           </button>

@@ -31,6 +31,7 @@ export const createCheckInSchema = z.object({
   mood: z.number().int().min(1).max(10).optional(),
 });
 export const distractMeSchema = z.object({
+  type: z.enum(["quote", "coffee", "ping_buddy", "support_group"]).optional().default("quote"),
   checkInId: z.string().uuid().optional(),
   lat: z.number().min(-90).max(90).optional(),
   lng: z.number().min(-180).max(180).optional(),

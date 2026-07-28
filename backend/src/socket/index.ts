@@ -11,7 +11,7 @@ export function initSocket(httpServer: HTTPServer, corsOptions: { origin: string
     cors: corsOptions,
   });
 
-  // Authenticate socket connections using the same JWT as REST requests
+  // ─── Authenticate every socket connection ──────────────────────
   io.use((socket, next) => {
     const token = socket.handshake.auth?.token;
     if (!token) return next(new Error("No token provided"));
@@ -28,12 +28,10 @@ export function initSocket(httpServer: HTTPServer, corsOptions: { origin: string
     const userId = (socket as any).userId;
     logger.info("Socket connected", { userId, socketId: socket.id });
 
-    // ─── Join user to their personal room for direct notifications ───
+    // ─── Join user to their personal room for direct notifications ──
     socket.join(`user:${userId}`);
 
-    // ─── Group Feed Events ─────────────────────────────────────────────
-
-    // Client requests to join a specific group's live room
+    // ─── Group Feed Events ──────────────────────────────────────────
     socket.on("join_group", async (groupId: string) => {
       const membership = await prisma.groupMembership.findFirst({
         where: { groupId, userId, status: "active" },
@@ -49,11 +47,11 @@ export function initSocket(httpServer: HTTPServer, corsOptions: { origin: string
       socket.leave(`group:${groupId}`);
     });
 
-    // ─── Chat Events ──────────────────────────────────────────────────
+    // ─── Chat Events ────────────────────────────────────────────────
 
     // Join a conversation room (for direct or group chat)
     socket.on("join_conversation", async (conversationId: string) => {
-      // Verify the user is a member of this conversation
+      // Verify membership
       const conv = await prisma.conversation.findUnique({
         where: { id: conversationId },
       });
@@ -85,7 +83,7 @@ export function initSocket(httpServer: HTTPServer, corsOptions: { origin: string
       logger.info("User left conversation", { userId, conversationId });
     });
 
-    // Send a message in a conversation
+    // Send a message in a conversation (includes notification to recipient)
     socket.on("send_message", async (data: { conversationId: string; content: string }) => {
       try {
         const { conversationId, content } = data;
@@ -132,16 +130,41 @@ export function initSocket(httpServer: HTTPServer, corsOptions: { origin: string
           data: { updatedAt: new Date() },
         });
 
-        // Broadcast to everyone in the conversation room
+        // ─── Broadcast to conversation room ──────────────────────
         io.to(`conv:${conversationId}`).emit("new_message", msg);
+
+        // ─── Send notification to the other participant ──────────
+        // Determine recipient
+        let recipientId: string | null = null;
+        if (conv.type === "direct") {
+          recipientId = conv.user1Id === userId ? conv.user2Id : conv.user1Id;
+        } else if (conv.groupId) {
+          // For group chats, we could notify all members, but we'll skip for now
+          // to avoid spam. We only handle direct chat notifications here.
+        }
+
+        if (recipientId) {
+          // Fetch sender's alias for the notification
+          const sender = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { displayAlias: true },
+          });
+          io.to(`user:${recipientId}`).emit("new_message_notification", {
+            conversationId,
+            senderAlias: sender?.displayAlias || "Someone",
+            content: content.trim().length > 50
+              ? content.trim().slice(0, 50) + "..."
+              : content.trim(),
+            timestamp: msg.createdAt,
+          });
+        }
       } catch (error) {
-        logger.error("Send message error", { error, userId });
+        logger.error("Socket send_message error", { error, userId });
         socket.emit("error", { message: "Failed to send message" });
       }
     });
 
-    // ─── Typing indicator (optional) ────────────────────────────────
-
+    // ─── Typing indicator (optional) ──────────────────────────────
     socket.on("typing", (data: { conversationId: string; isTyping: boolean }) => {
       socket.to(`conv:${data.conversationId}`).emit("user_typing", {
         userId,
@@ -150,7 +173,6 @@ export function initSocket(httpServer: HTTPServer, corsOptions: { origin: string
     });
 
     // ─── Disconnect ──────────────────────────────────────────────────
-
     socket.on("disconnect", () => {
       logger.info("Socket disconnected", { userId, socketId: socket.id });
     });

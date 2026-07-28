@@ -298,6 +298,9 @@ model Conversation {
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")
   messages    ChatMessage[]
+  user1LastReadAt DateTime @default(now()) @map("user1_last_read_at")
+  user2LastReadAt DateTime @default(now()) @map("user2_last_read_at")
+
 
   group Group? @relation(fields: [groupId], references: [id])
   user1 User?  @relation("User1Conversations", fields: [user1Id], references: [id])
@@ -322,4 +325,6 @@ model PairQueue {
   createdAt DateTime @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, category])   // ← add this line
 }
