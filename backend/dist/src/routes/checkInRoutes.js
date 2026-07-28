@@ -1,0 +1,12 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const authMiddleware_1 = require("../middleware/authMiddleware");
+const checkInController_1 = require("../controllers/checkInController");
+const validate_1 = require("../middleware/validate");
+const validation_1 = require("../lib/validation");
+const router = (0, express_1.Router)();
+router.use(authMiddleware_1.requireAuth);
+router.post("/", (0, validate_1.validate)(validation_1.createCheckInSchema), checkInController_1.createCheckIn);
+router.get("/:habitId", checkInController_1.getCheckIns);
+exports.default = router;

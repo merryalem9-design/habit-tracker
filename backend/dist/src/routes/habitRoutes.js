@@ -1,0 +1,14 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const authMiddleware_1 = require("../middleware/authMiddleware");
+const habitController_1 = require("../controllers/habitController");
+const validate_1 = require("../middleware/validate");
+const validation_1 = require("../lib/validation");
+const router = (0, express_1.Router)();
+router.use(authMiddleware_1.requireAuth);
+router.get("/", habitController_1.getHabits);
+router.post("/", (0, validate_1.validate)(validation_1.createHabitSchema), habitController_1.createHabit);
+router.patch("/:id", (0, validate_1.validate)(validation_1.updateHabitSchema), habitController_1.updateHabit);
+router.delete("/:id", habitController_1.archiveHabit);
+exports.default = router;
