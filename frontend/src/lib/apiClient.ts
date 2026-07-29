@@ -25,6 +25,14 @@ apiClient.interceptors.response.use(
     const originalRequest = error.config;
 
     if (error.response?.status === 401 && !originalRequest._retry) {
+      // --- CRITICAL FIX START ---
+      // If the request is for login or signup, do NOT attempt to refresh the token.
+      // Just pass the error back to the AuthPage so it can show the toast message.
+      if (originalRequest.url?.includes('/auth/login') || originalRequest.url?.includes('/auth/signup')) {
+        return Promise.reject(error);
+      }
+      // --- CRITICAL FIX END ---
+
       originalRequest._retry = true;
 
       if (isRefreshing) {
@@ -37,7 +45,10 @@ apiClient.interceptors.response.use(
       isRefreshing = true;
       try {
         const refreshToken = tokenStorage.getRefreshToken();
-        if (!refreshToken) throw new Error("No refresh token");
+        if (!refreshToken) {
+          // If no refresh token is available, reject the original error so AuthPage can show the message
+          return Promise.reject(error);
+        }
 
         const { data } = await axios.post("http://localhost:4000/api/auth/refresh", {
           refreshToken,
