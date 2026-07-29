@@ -5,7 +5,6 @@ import prisma from "../prismaClient";
 import { generateAlias } from "../utils/generateAlias";
 import logger from "../lib/logger";
 import { signAccessToken, generateRefreshToken, hashRefreshToken } from "../lib/tokens";
-import { sendResetCode } from "../services/emailService"; 
 
 const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
@@ -18,7 +17,6 @@ async function issueTokenPair(userId: string) {
   return { accessToken, refreshToken: raw };
 }
 
-// Generate a unique 6-digit verification code (for Signup)
 async function generateUniqueVerificationCode(): Promise<string> {
   let code: string = ''; 
   let isUnique = false;
@@ -180,10 +178,13 @@ export async function logout(req: Request, res: Response) {
   }
 }
 
-// ───── NEW: Password Reset ──────────────────────────────────────────
+// ───── PASSWORD RESET ──────────────────────────────────────────────
+
 export async function requestPasswordReset(req: Request, res: Response) {
   try {
     const { email } = req.body;
+    if (!email) return res.status(400).json({ error: "Email is required" });
+
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) return res.status(404).json({ error: "User not found" });
 
@@ -194,12 +195,10 @@ export async function requestPasswordReset(req: Request, res: Response) {
       data: { userId: user.id, token, expiresAt },
     });
 
-    // Send actual email
-    await sendResetCode(email, token);
-
+    // Email code removed. The code is returned to frontend directly.
     res.json({
-      message: "Reset code sent to your email",
-      resetCode: process.env.NODE_ENV === 'development' ? token : undefined
+      message: "Reset code generated. Please check the screen.",
+      resetCode: token 
     });
   } catch (error) {
     logger.error("Reset request error", { error });
@@ -229,7 +228,7 @@ export async function resetPassword(req: Request, res: Response) {
       prisma.passwordResetToken.update({ where: { id: resetToken.id }, data: { used: true } }),
     ]);
 
-    // FIXED: Auto-login user after password reset
+    // Auto-login user after password reset
     const { accessToken, refreshToken } = await issueTokenPair(user.id);
 
     res.json({
