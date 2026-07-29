@@ -17,11 +17,11 @@ const CRISIS_PATTERNS: { category: string; patterns: RegExp[] }[] = [
   {
     category: "self_harm_risk",
     patterns: [
-      /\bkill myself\b/i,
+      /\bkill\w*\b/i,               // Catches: kill, kills, killed, killing
       /\bend my life\b/i,
-      /\bsuicid(e|al)\b/i,
+      /\bsuicid(e|al)\b/i,          // Catches: suicide, suicidal
       /\bwant to die\b/i,
-      /\bself[\s-]?harm\b/i,
+      /\bself[\s-]?harm\b/i,        // Catches: self-harm, self harm
       /\bno reason to (live|go on)\b/i,
     ],
   },

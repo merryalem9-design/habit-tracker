@@ -15,6 +15,7 @@ interface Post {
   alias: string;
   userId: string;
   createdAt: string;
+  flagged?: boolean; // Added optional flag
   reactions: { reactionType: string }[];
 }
 
@@ -63,7 +64,10 @@ export default function GroupFeedPage() {
     socket.emit("join_group", groupId);
 
     socket.on("new_post", (post: Post) => {
-      setPosts((prev) => [post, ...prev]);
+      // Only add to feed if it's not flagged
+      if (!post.flagged) {
+        setPosts((prev) => [post, ...prev]);
+      }
     });
 
     socket.on("post_edited", (data: { id: string; content: string }) => {
@@ -90,11 +94,14 @@ export default function GroupFeedPage() {
     try {
       const { data } = await apiClient.post("/posts", { groupId, content: message });
       setMessage("");
-      // Immediately add the post to the local list
-      setPosts((prev) => [data.post, ...prev]);
-      if (data.supportResources) {
+      
+      // FIXED: If the post was flagged by the backend, DO NOT add it locally.
+      if (data.post.flagged) {
+        toast.error("Your post was flagged for safety review and has been hidden.", { duration: 5000 });
         setSupportResource(data.supportResources);
         setDistractResult(null);
+      } else {
+        setPosts((prev) => [data.post, ...prev]);
       }
     } catch (err) {
       console.error("Failed to post:", err);
