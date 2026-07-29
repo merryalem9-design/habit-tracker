@@ -17,9 +17,10 @@ interface HabitCardProps {
   index: number;
   onCheckIn: (habitId: string, status: "success" | "relapse" | "skipped") => void;
   onGroup: (category: string) => void;
+  onDelete: (habitId: string) => void; // <-- NEW prop
 }
 
-export function HabitCard({ habit, index, onCheckIn, onGroup }: HabitCardProps) {
+export function HabitCard({ habit, index, onCheckIn, onGroup, onDelete }: HabitCardProps) {
   const swipeHandlers = useSwipeable({
     onSwipedLeft: () => onCheckIn(habit.id, "success"),
     onSwipedRight: () => onCheckIn(habit.id, "skipped"),
@@ -45,10 +46,21 @@ export function HabitCard({ habit, index, onCheckIn, onGroup }: HabitCardProps) 
               <p className="text-xs text-gray-400">{habit.category}</p>
             </div>
           </div>
-          <div className="text-right">
+          <div className="flex items-center gap-2 text-right">
             <span className="text-amber-400">
               {habit.streak?.currentStreak || 0}🔥
             </span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (window.confirm("Are you sure you want to end your progress?")) {
+                  onDelete(habit.id);
+                }
+              }}
+              className="text-gray-500 hover:text-red-400 transition p-1"
+            >
+              🗑️
+            </button>
           </div>
         </div>
 
@@ -61,8 +73,11 @@ export function HabitCard({ habit, index, onCheckIn, onGroup }: HabitCardProps) 
           />
         </div>
 
-        {/* Added relative z-10 and stopPropagation to stop the TiltCard from spinning when clicking buttons */}
-        <div className="mt-3 flex gap-2 relative z-10" onClick={(e) => e.stopPropagation()}>
+        {/* Added onPointerDown to stop the TiltCard from reacting to mouse movements over the buttons */}
+        <div 
+          className="mt-3 flex gap-2 relative z-10" 
+          onPointerDown={(e) => e.stopPropagation()}
+        >
           <button
             onClick={(e) => { e.stopPropagation(); onCheckIn(habit.id, "success"); }}
             className="flex-1 rounded-xl bg-emerald-500/20 py-1.5 text-sm font-medium text-emerald-400 transition hover:bg-emerald-500/30"
