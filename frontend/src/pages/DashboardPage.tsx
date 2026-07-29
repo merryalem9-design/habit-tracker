@@ -32,7 +32,7 @@ const QUIT_CATEGORIES = [
   "Sugar",
   "Junk Food",
   "Social Media",
-  "Pornography",
+  "Lower Screen time",
   "Gambling",
 ];
 const PRACTICE_CATEGORIES = [

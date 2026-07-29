@@ -346,7 +346,12 @@ export default function GroupFeedPage() {
                 </div>
               )}
 
-              <ReactionButton postId={post.id} onReact={handleReact} />
+              {/* FIX APPLIED: Passing reactions={post.reactions} to the button */}
+              <ReactionButton 
+                postId={post.id} 
+                onReact={handleReact} 
+                reactions={post.reactions} 
+              />
             </motion.div>
           ))}
         </div>
