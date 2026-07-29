@@ -1,5 +1,6 @@
 import axios from "axios";
 import { tokenStorage } from "./storage";
+import toast from "react-hot-toast"; // Import global toast
 
 const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "http://localhost:4000/api",
@@ -24,19 +25,27 @@ apiClient.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      // --- CRITICAL FIX START ---
-      // If the request is for login or signup, do NOT attempt to refresh the token.
-      // Just pass the error back to the AuthPage so it can show the toast message.
+    // --- Handle Network Errors / Timeouts (Don't crash!) ---
+    if (error.code === 'ERR_NETWORK' || error.message === 'timeout' || !error.response) {
+      // If it's a backend sleep timeout (Render) and they are trying to login/signup, just pass the error.
       if (originalRequest.url?.includes('/auth/login') || originalRequest.url?.includes('/auth/signup')) {
         return Promise.reject(error);
       }
-      // --- CRITICAL FIX END ---
+      // Otherwise, prompt them to refresh without logging them out immediately.
+      toast.error("Server is waking up. Please try again in a moment.", { duration: 5000 });
+      return Promise.reject(error);
+    }
+
+    // --- Handle Unauthorized (Expired Token) ---
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      // Skip refresh for login/signup
+      if (originalRequest.url?.includes('/auth/login') || originalRequest.url?.includes('/auth/signup')) {
+        return Promise.reject(error);
+      }
 
       originalRequest._retry = true;
 
       if (isRefreshing) {
-        // Queue this request until the in-flight refresh finishes
         return new Promise((resolve) => {
           refreshQueue.push(() => resolve(apiClient(originalRequest)));
         });
@@ -46,11 +55,10 @@ apiClient.interceptors.response.use(
       try {
         const refreshToken = tokenStorage.getRefreshToken();
         if (!refreshToken) {
-          // If no refresh token is available, reject the original error so AuthPage can show the message
           return Promise.reject(error);
         }
 
-        const { data } = await axios.post("http://localhost:4000/api/auth/refresh", {
+        const { data } = await axios.post(`${import.meta.env.VITE_API_URL}/auth/refresh`, {
           refreshToken,
         });
 
@@ -62,8 +70,17 @@ apiClient.interceptors.response.use(
 
         return apiClient(originalRequest);
       } catch (refreshError) {
+        // -- CLEAN LOGOUT FLOW --
         tokenStorage.clearTokens();
-        window.location.href = "/login";
+        
+        // Show the toast message, wait 1.5s so the user reads it, then redirect
+        toast.error("You have been logged out. Please log in again.", { duration: 4000 });
+        
+        setTimeout(() => {
+          // This will now work perfectly without a 404 because of the new vercel.json rewrite!
+          window.location.href = "/login";
+        }, 1500);
+
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;
