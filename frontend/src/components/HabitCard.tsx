@@ -61,21 +61,22 @@ export function HabitCard({ habit, index, onCheckIn, onGroup }: HabitCardProps) 
           />
         </div>
 
-        <div className="mt-3 flex gap-2">
+        {/* Added relative z-10 and stopPropagation to stop the TiltCard from spinning when clicking buttons */}
+        <div className="mt-3 flex gap-2 relative z-10" onClick={(e) => e.stopPropagation()}>
           <button
-            onClick={() => onCheckIn(habit.id, "success")}
+            onClick={(e) => { e.stopPropagation(); onCheckIn(habit.id, "success"); }}
             className="flex-1 rounded-xl bg-emerald-500/20 py-1.5 text-sm font-medium text-emerald-400 transition hover:bg-emerald-500/30"
           >
             ✅ Done
           </button>
           <button
-            onClick={() => onCheckIn(habit.id, "relapse")}
+            onClick={(e) => { e.stopPropagation(); onCheckIn(habit.id, "relapse"); }}
             className="flex-1 rounded-xl bg-red-500/20 py-1.5 text-sm font-medium text-red-400 transition hover:bg-red-500/30"
           >
             ❌ Miss
           </button>
           <button
-            onClick={() => onGroup(habit.category)}
+            onClick={(e) => { e.stopPropagation(); onGroup(habit.category); }}
             className="flex-1 rounded-xl bg-brand-purple/20 py-1.5 text-sm font-medium text-brand-purple transition hover:bg-brand-purple/30"
           >
             👥 Group

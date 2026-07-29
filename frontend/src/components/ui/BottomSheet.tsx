@@ -22,7 +22,7 @@ export function BottomSheet({ isOpen, onClose, children }: BottomSheetProps) {
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
             transition={{ type: "spring", damping: 25, stiffness: 500 }}
-            className="w-full max-w-md rounded-t-3xl bg-[#1E293B] p-6 pb-8"
+            className="w-full max-w-md rounded-t-3xl bg-brand-card p-6 pb-8 max-h-[85vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mx-auto mb-4 h-1 w-12 rounded-full bg-gray-600" />

@@ -100,38 +100,36 @@ export default function ChatPage() {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
         {messages.map((msg) => {
-  const isOwn = msg.senderId === currentUser?.id;
-  return (
-    <motion.div
-      key={msg.id}
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      className={`flex flex-col ${isOwn ? "items-end" : "items-start"} w-full`}
-    >
-      {/* Alias for Receiver (Incoming) */}
-      {!isOwn && (
-        <span className="text-xs text-gray-400 ml-2 mb-1 font-medium">
-          {msg.senderId === currentUser?.id ? "You" : "User"}
-        </span>
-      )}
-      
-      {/* The Bubble */}
-              {/* The Bubble */}
-        <div
-          className={`max-w-[75%] p-3 rounded-2xl break-anywhere ${
-            isOwn
-              ? "bg-linear-to-r from-brand-purple to-brand-pink text-white rounded-br-none shadow-lg shadow-brand-purple/25"
-              : "bg-white/10 text-gray-200 rounded-bl-none border border-white/5"
-          }`}
-        >
-          <p className="text-sm">{msg.content}</p>
-          <span className="text-[10px] opacity-70 block mt-1">
-            {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </span>
-        </div>
-    </motion.div>
-  );
-})}
+          const isOwn = msg.senderId === currentUser?.id;
+          return (
+            <motion.div
+              key={msg.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={`flex flex-col w-full ${isOwn ? "items-end" : "items-start"}`}
+            >
+              {/* Show the sender's alias only if it's NOT the current user (receiver) */}
+              {!isOwn && (
+                <span className="text-xs text-gray-400 ml-2 mb-1 font-medium">
+                  {msg.senderId === currentUser?.id ? "You" : "Other User"}
+                </span>
+              )}
+              
+              <div
+                className={`max-w-[75%] p-3 rounded-2xl break-anywhere ${
+                  isOwn
+                    ? "bg-linear-to-r from-brand-purple to-brand-pink text-white rounded-br-none shadow-lg shadow-brand-purple/25"
+                    : "bg-white/10 text-gray-200 rounded-bl-none border border-white/5 backdrop-blur-sm"
+                }`}
+              >
+                <p className="text-sm">{msg.content}</p>
+                <span className="text-[10px] opacity-70 block mt-1">
+                  {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+            </motion.div>
+          );
+        })}
         <div ref={messagesEndRef} />
       </div>
 
