@@ -5,7 +5,7 @@ import prisma from "../prismaClient";
 import { generateAlias } from "../utils/generateAlias";
 import logger from "../lib/logger";
 import { signAccessToken, generateRefreshToken, hashRefreshToken } from "../lib/tokens";
-import { sendResetCode } from "../services/emailService"; // <--- THIS WAS MISSING
+import { sendResetCode } from "../services/emailService"; 
 
 const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
@@ -18,7 +18,7 @@ async function issueTokenPair(userId: string) {
   return { accessToken, refreshToken: raw };
 }
 
-// Generate a unique 6-digit code
+// Generate a unique 6-digit verification code (for Signup)
 async function generateUniqueVerificationCode(): Promise<string> {
   let code: string = ''; 
   let isUnique = false;
@@ -54,7 +54,6 @@ export async function signup(req: Request, res: Response) {
     });
     logger.info("User created (unverified)", { userId: user.id, email: user.email });
 
-    // FIX: Always return the code so the frontend toast works on the live deployment
     res.status(201).json({
       userId: user.id,
       message: "User created. Please verify your account.",
@@ -81,7 +80,6 @@ export async function sendVerificationCode(req: Request, res: Response) {
       data: { verificationCode: newCode, verificationCodeExpiresAt: expiresAt },
     });
 
-    // FIX: Always return the code so the frontend toast works on the live deployment
     res.json({
       message: "New verification code sent to email.",
       verificationCode: newCode
@@ -149,9 +147,7 @@ export async function login(req: Request, res: Response) {
 export async function refresh(req: Request, res: Response) {
   try {
     const { refreshToken } = req.body;
-    if (!refreshToken) {
-      return res.status(400).json({ error: "refreshToken is required" });
-    }
+    if (!refreshToken) return res.status(400).json({ error: "refreshToken is required" });
 
     const hash = hashRefreshToken(refreshToken);
     const stored = await prisma.refreshToken.findFirst({ where: { tokenHash: hash } });
@@ -173,13 +169,10 @@ export async function refresh(req: Request, res: Response) {
 export async function logout(req: Request, res: Response) {
   try {
     const { refreshToken } = req.body;
-    if (!refreshToken) {
-      return res.status(400).json({ error: "refreshToken is required" });
-    }
+    if (!refreshToken) return res.status(400).json({ error: "refreshToken is required" });
 
     const hash = hashRefreshToken(refreshToken);
     await prisma.refreshToken.updateMany({ where: { tokenHash: hash }, data: { revoked: true } });
-
     res.status(204).send();
   } catch (error) {
     logger.error("Logout error", { error });
@@ -187,6 +180,7 @@ export async function logout(req: Request, res: Response) {
   }
 }
 
+// ───── NEW: Password Reset ──────────────────────────────────────────
 export async function requestPasswordReset(req: Request, res: Response) {
   try {
     const { email } = req.body;
@@ -200,8 +194,13 @@ export async function requestPasswordReset(req: Request, res: Response) {
       data: { userId: user.id, token, expiresAt },
     });
 
+    // Send actual email
     await sendResetCode(email, token);
-    res.json({ message: "Reset code sent to your email" });
+
+    res.json({
+      message: "Reset code sent to your email",
+      resetCode: process.env.NODE_ENV === 'development' ? token : undefined
+    });
   } catch (error) {
     logger.error("Reset request error", { error });
     res.status(500).json({ error: "Failed to send reset code" });
@@ -230,7 +229,15 @@ export async function resetPassword(req: Request, res: Response) {
       prisma.passwordResetToken.update({ where: { id: resetToken.id }, data: { used: true } }),
     ]);
 
-    res.json({ message: "Password updated successfully" });
+    // FIXED: Auto-login user after password reset
+    const { accessToken, refreshToken } = await issueTokenPair(user.id);
+
+    res.json({
+      message: "Password updated successfully",
+      accessToken,
+      refreshToken,
+      user: { id: user.id, email: user.email, displayAlias: user.displayAlias, isVerified: user.isVerified },
+    });
   } catch (error) {
     logger.error("Reset password error", { error });
     res.status(500).json({ error: "Failed to reset password" });

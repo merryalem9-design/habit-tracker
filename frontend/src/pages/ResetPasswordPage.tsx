@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import axios from "axios";
 import apiClient from "../lib/apiClient";
+import { useAuthStore } from "../store/authStore"; // <-- Import the store
 import toast from "react-hot-toast";
 
 export default function ResetPasswordPage() {
@@ -12,6 +13,7 @@ export default function ResetPasswordPage() {
   const [newPassword, setNewPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const login = useAuthStore((s) => s.login); // <-- Get the login action
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,9 +23,13 @@ export default function ResetPasswordPage() {
     }
     setLoading(true);
     try {
-      await apiClient.post("/auth/reset-password", { email, token, newPassword });
-      toast.success("Password reset successful! Please log in.");
-      navigate("/login");
+      const { data } = await apiClient.post("/auth/reset-password", { email, token, newPassword });
+      
+      toast.success("Password reset successful! Logging you in...");
+      
+      // FIXED: Auto-login the user with the returned tokens
+      login(data.user, data.accessToken, data.refreshToken);
+      navigate("/dashboard");
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
         toast.error(err.response?.data?.error || "Reset failed");
