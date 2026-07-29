@@ -1,5 +1,6 @@
 import prisma from "../prismaClient";
 import logger from "../lib/logger";
+import { getIO } from "../socket"; // <-- Import added
 
 // ─── Public types for the frontend ──────────────────────────────
 export type DistractType = "quote" | "coffee" | "ping_buddy" | "support_group";
@@ -98,7 +99,7 @@ async function supportGroupPing(userId: string) {
 
   if (!membership) return { sent: false };
 
-  await prisma.post.create({
+  const post = await prisma.post.create({
     data: {
       groupId: membership.groupId,
       userId,
@@ -106,6 +107,20 @@ async function supportGroupPing(userId: string) {
       flagged: false,
     },
   });
+
+  // Build the shaped post object (same as in postController)
+  const shaped = {
+    id: post.id,
+    content: post.content,
+    checkInId: post.checkInId,
+    createdAt: post.createdAt,
+    alias: membership.aliasInGroup,
+    userId: post.userId,
+    reactions: [],
+  };
+
+  // Emit to the group room so all clients see it instantly
+  getIO().to(`group:${membership.groupId}`).emit("new_post", shaped);
 
   return { sent: true, groupId: membership.groupId };
 }

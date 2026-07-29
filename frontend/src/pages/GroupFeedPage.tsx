@@ -90,6 +90,8 @@ export default function GroupFeedPage() {
     try {
       const { data } = await apiClient.post("/posts", { groupId, content: message });
       setMessage("");
+      // Immediately add the post to the local list
+      setPosts((prev) => [data.post, ...prev]);
       if (data.supportResources) {
         setSupportResource(data.supportResources);
         setDistractResult(null);
@@ -346,7 +348,6 @@ export default function GroupFeedPage() {
                 </div>
               )}
 
-              {/* FIX APPLIED: Passing reactions={post.reactions} to the button */}
               <ReactionButton 
                 postId={post.id} 
                 onReact={handleReact} 
