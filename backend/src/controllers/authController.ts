@@ -54,11 +54,11 @@ export async function signup(req: Request, res: Response) {
     });
     logger.info("User created (unverified)", { userId: user.id, email: user.email });
 
-    // In production, you would send an email. In DEV, we return the code to the frontend so you can test!
+    // FIX: Always return the code so the frontend toast works on the live deployment
     res.status(201).json({
       userId: user.id,
       message: "User created. Please verify your account.",
-      verificationCode: process.env.NODE_ENV === 'development' ? verificationCode : undefined
+      verificationCode
     });
   } catch (error) {
     logger.error("Signup error", { error });
@@ -81,9 +81,10 @@ export async function sendVerificationCode(req: Request, res: Response) {
       data: { verificationCode: newCode, verificationCodeExpiresAt: expiresAt },
     });
 
+    // FIX: Always return the code so the frontend toast works on the live deployment
     res.json({
       message: "New verification code sent to email.",
-      verificationCode: process.env.NODE_ENV === 'development' ? newCode : undefined
+      verificationCode: newCode
     });
   } catch (error) {
     logger.error("Resend code error", { error });
