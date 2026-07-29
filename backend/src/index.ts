@@ -21,18 +21,37 @@ const app = express();
 const httpServer = createServer(app);
 const PORT = process.env.PORT || 4000;
 
-// Only allow requests from your actual frontend, not from anywhere
-const corsOptions = {
-  origin: process.env.FRONTEND_URL || "http://localhost:5173",
-  credentials: true,
-};
+// --- SINGLE SOURCE OF TRUTH FOR CORS (Removed the duplicate) ---
+// This dynamically allows your production domain AND every unique preview deployment Vercel generates.
+const allowedOrigins = [
+  'http://localhost:5173', // Local development
+  'https://habit-tracker-mqbc-puce.vercel.app', // Your main Vercel production domain
+  // Regex: Allows `habit-tracker-mqbc-` followed by anything ending in `.vercel.app`
+  /^https:\/\/habit-tracker-mqbc-.*\.vercel\.app$/
+];
 
 app.use(cors({
-  origin: [
-    'http://localhost:5173', 
-    'https://habit-tracker-mqbc-puce.vercel.app' 
-  ]
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Check if the origin matches an allowed string or RegExp pattern
+    const isAllowed = allowedOrigins.some(allowed => {
+      if (allowed instanceof RegExp) {
+        return allowed.test(origin);
+      }
+      return allowed === origin;
+    });
+
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true // Crucial for allowing Authorization headers (JWT)
 }));
+
 app.use(express.json());
 app.use(morgan("dev"));
 
@@ -52,7 +71,9 @@ app.get("/", (req, res) => {
   res.json({ status: "Habit tracker API is running" });
 });
 
-initSocket(httpServer, corsOptions); // pass the same options to Socket.io
+// Pass the same CORS options to Socket.io
+// Pass the same CORS options to Socket.io
+initSocket(httpServer, { origin: allowedOrigins as any, credentials: true });
 
 httpServer.listen(PORT, () => {
   logger.info(`Server running on http://localhost:${PORT}`);
