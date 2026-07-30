@@ -5,11 +5,11 @@ const REACTIONS = ["💪", "🔥", "❤️", "🌟"];
 interface ReactionButtonProps {
   postId: string;
   onReact: (postId: string, emoji: string) => void;
-  reactions: { reactionType: string }[]; // <-- Added to receive reactions
+  reactions: { userId?: string; reactionType: string }[]; // Added optional userId
 }
 
 export function ReactionButton({ postId, onReact, reactions }: ReactionButtonProps) {
-  // Calculate the count for each reaction type
+  // Calculate the count for each reaction type based on the incoming array
   const counts = reactions.reduce((acc, r) => {
     acc[r.reactionType] = (acc[r.reactionType] || 0) + 1;
     return acc;
@@ -26,7 +26,6 @@ export function ReactionButton({ postId, onReact, reactions }: ReactionButtonPro
           className="flex items-center gap-1.5 rounded-full bg-white/5 px-3 py-1 text-sm transition hover:bg-white/10"
         >
           {emoji}
-          {/* <-- Display the count */}
           <span className="text-xs text-gray-400">{counts[emoji] || 0}</span>
         </motion.button>
       ))}

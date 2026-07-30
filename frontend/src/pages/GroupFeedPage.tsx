@@ -15,8 +15,10 @@ interface Post {
   alias: string;
   userId: string;
   createdAt: string;
-  flagged?: boolean; // Added optional flag
-  reactions: { reactionType: string }[];
+  groupId: string;
+  groupCategory: string;
+  flagged?: boolean; 
+  reactions: { userId?: string; reactionType: string }[];
 }
 
 interface SupportResource {
@@ -49,11 +51,16 @@ export default function GroupFeedPage() {
   const socketRef = useRef(getSocket());
   const currentUser = useAuthStore((s) => s.user);
 
+  // Helper to sort posts by createdAt in descending order (newest first)
+  const sortPosts = (posts: Post[]) => {
+    return posts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  };
+
   useEffect(() => {
     async function loadFeed() {
       try {
         const { data } = await apiClient.get(`/groups/${groupId}/feed`);
-        setPosts(data);
+        setPosts(sortPosts(data));
       } catch (err) {
         console.error("Failed to load feed:", err);
       }
@@ -64,9 +71,13 @@ export default function GroupFeedPage() {
     socket.emit("join_group", groupId);
 
     socket.on("new_post", (post: Post) => {
-      // Only add to feed if it's not flagged
       if (!post.flagged) {
-        setPosts((prev) => [post, ...prev]);
+        setPosts((prev) => sortPosts([post, ...prev]));
+        
+        if (currentUser && post.userId !== currentUser.id) {
+          const groupName = post.groupCategory || "the group";
+          toast.success(`📢 New post in the ${groupName} group!`, { duration: 4000 });
+        }
       }
     });
 
@@ -80,13 +91,43 @@ export default function GroupFeedPage() {
       setPosts((prev) => prev.filter((p) => p.id !== data.id));
     });
 
+    // ─── NEW: Instant reaction updates ──────────────────────────────
+    socket.on("new_reaction", ({ postId, reaction }: { postId: string; reaction: { userId: string; reactionType: string } }) => {
+      setPosts((prev) => {
+        const postIndex = prev.findIndex((p) => p.id === postId);
+        if (postIndex === -1) return prev;
+
+        const newPosts = [...prev];
+        const existingReactionIndex = newPosts[postIndex].reactions.findIndex(
+          (r) => r.userId === reaction.userId
+        );
+
+        let updatedReactions;
+        if (existingReactionIndex !== -1) {
+          // Replace the old reaction emoji with the new one
+          updatedReactions = [...newPosts[postIndex].reactions];
+          updatedReactions[existingReactionIndex] = reaction;
+        } else {
+          // Append the new reaction
+          updatedReactions = [...newPosts[postIndex].reactions, reaction];
+        }
+
+        newPosts[postIndex] = {
+          ...newPosts[postIndex],
+          reactions: updatedReactions,
+        };
+        return newPosts;
+      });
+    });
+
     return () => {
       socket.emit("leave_group", groupId);
       socket.off("new_post");
       socket.off("post_edited");
       socket.off("post_deleted");
+      socket.off("new_reaction"); // Good practice to clean up
     };
-  }, [groupId]);
+  }, [groupId, currentUser]);
 
   const handlePost = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,13 +136,12 @@ export default function GroupFeedPage() {
       const { data } = await apiClient.post("/posts", { groupId, content: message });
       setMessage("");
       
-      // FIXED: If the post was flagged by the backend, DO NOT add it locally.
       if (data.post.flagged) {
         toast.error("Your post was flagged for safety review and has been hidden.", { duration: 5000 });
         setSupportResource(data.supportResources);
         setDistractResult(null);
       } else {
-        setPosts((prev) => [data.post, ...prev]);
+        setPosts((prev) => sortPosts([data.post, ...prev]));
       }
     } catch (err) {
       console.error("Failed to post:", err);
