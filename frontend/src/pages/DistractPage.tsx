@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import axios from "axios";
 import apiClient from "../lib/apiClient";
@@ -19,7 +19,12 @@ interface DistractResult {
     otherUser?: string;
     emergencyContact?: { name: string; phone: string } | null;
   };
-  supportGroup?: { sent: boolean; groupId?: string };
+  supportGroup?: { 
+    sent: boolean; 
+    groupId?: string;
+    needsSelection?: boolean;
+    groups?: { id: string; category: string }[];
+  };
 }
 
 const DISTRACT_OPTIONS = [
@@ -34,7 +39,25 @@ export default function DistractPage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<DistractResult | null>(null);
   const [feedback, setFeedback] = useState("");
+  const [selectedGroupId, setSelectedGroupId] = useState<string>("");
+  const [supportGroups, setSupportGroups] = useState<{ id: string; category: string }[]>([]);
   const navigate = useNavigate();
+
+  // When support_group is selected, check the user's groups
+  useEffect(() => {
+    if (selectedType === "support_group") {
+      apiClient.get("/groups/mine").then((res) => {
+        const groups = res.data.map((m: any) => m.group);
+        setSupportGroups(groups);
+        if (groups.length > 0) setSelectedGroupId(groups[0].id);
+      }).catch(() => {
+        toast.error("Failed to load your groups");
+      });
+    } else {
+      setSupportGroups([]);
+      setSelectedGroupId("");
+    }
+  }, [selectedType]);
 
   const triggerDistract = async () => {
     setLoading(true);
@@ -52,11 +75,14 @@ export default function DistractPage() {
           );
         });
       }
-      const { data } = await apiClient.post("/distract-me", {
-        type: selectedType,
-        lat,
-        lng,
-      });
+
+      // Build the payload
+      const payload: any = { type: selectedType, lat, lng };
+      if (selectedType === "support_group" && selectedGroupId) {
+        payload.groupId = selectedGroupId; // <-- Send selected group
+      }
+
+      const { data } = await apiClient.post("/distract-me", payload);
       setResult(data);
 
       if (data.suggestionType === "support_group" && data.supportGroup?.sent) {
@@ -117,13 +143,35 @@ export default function DistractPage() {
           </select>
         </div>
 
+        {/* Render Group Selector ONLY if support_group is selected and they have multiple groups */}
+        {selectedType === "support_group" && supportGroups.length > 1 && (
+          <div className="mb-4">
+            <label className="text-sm text-gray-400 block mb-2">Select a group to ping:</label>
+            <select
+              value={selectedGroupId}
+              onChange={(e) => setSelectedGroupId(e.target.value)}
+              className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white focus:border-brand-purple focus:outline-none"
+            >
+              {supportGroups.map((g) => (
+                <option key={g.id} value={g.id}>{g.category}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <button
           onClick={triggerDistract}
-          disabled={loading}
+          disabled={loading || (selectedType === "support_group" && supportGroups.length === 0)}
           className="w-full bg-linear-to-r from-brand-purple to-brand-pink py-3 rounded-xl text-white font-semibold disabled:opacity-50"
         >
-          {loading ? "Loading..." : "Get Suggestion"}
+          {loading ? "Loading..." : (selectedType === "support_group" && supportGroups.length > 1 ? "Send Support Ping" : "Get Suggestion")}
         </button>
+
+        {selectedType === "support_group" && supportGroups.length === 0 && !loading && (
+          <p className="text-yellow-400 text-sm mt-2 text-center">
+            You are not in any groups yet. Join a group from your dashboard first.
+          </p>
+        )}
 
         {result && (
           <motion.div

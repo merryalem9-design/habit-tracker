@@ -5,12 +5,11 @@ import { getDistraction, DistractType } from "../services/distractService";
 import logger from "../lib/logger";
 
 // POST /api/distract-me
-// Body: { type: "quote" | "coffee" | "ping_buddy" | "support_group", checkInId?, lat?, lng? }
+// Body: { type: "quote" | "coffee" | "ping_buddy" | "support_group", checkInId?, lat?, lng?, groupId? }
 export async function triggerDistractMe(req: AuthRequest, res: Response) {
   try {
-    const { type, checkInId, lat, lng } = req.body;
+    const { type, checkInId, lat, lng, groupId } = req.body;
 
-    // Validate the type
     const validTypes: DistractType[] = ["quote", "coffee", "ping_buddy", "support_group"];
     const requestedType = validTypes.includes(type) ? type : "quote";
 
@@ -19,7 +18,8 @@ export async function triggerDistractMe(req: AuthRequest, res: Response) {
       requestedType,
       checkInId ?? null,
       typeof lat === "number" ? lat : undefined,
-      typeof lng === "number" ? lng : undefined
+      typeof lng === "number" ? lng : undefined,
+      groupId // <-- Forward the selected groupId
     );
 
     res.status(201).json(result);
