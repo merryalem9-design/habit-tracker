@@ -195,7 +195,6 @@ export async function requestPasswordReset(req: Request, res: Response) {
       data: { userId: user.id, token, expiresAt },
     });
 
-    // Email code removed. The code is returned to frontend directly.
     res.json({
       message: "Reset code generated. Please check the screen.",
       resetCode: token 
@@ -209,8 +208,21 @@ export async function requestPasswordReset(req: Request, res: Response) {
 export async function resetPassword(req: Request, res: Response) {
   try {
     const { email, token, newPassword } = req.body;
-    const user = await prisma.user.findUnique({ where: { email } });
+    
+    // --- FIX START: Fetches passwordHash to check against the old password ---
+    const user = await prisma.user.findUnique({ 
+      where: { email },
+      select: { id: true, email: true, displayAlias: true, isVerified: true, passwordHash: true }
+    });
+    // --- FIX END ---
+
     if (!user) return res.status(404).json({ error: "User not found" });
+
+    // --- NEW CHECK: Ensure they aren't reusing the old password ---
+    const isSamePassword = await bcrypt.compare(newPassword, user.passwordHash);
+    if (isSamePassword) {
+      return res.status(400).json({ error: "You can't use your old password again" });
+    }
 
     const resetToken = await prisma.passwordResetToken.findFirst({
       where: {
