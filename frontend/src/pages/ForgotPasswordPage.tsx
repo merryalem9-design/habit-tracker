@@ -14,9 +14,20 @@ export default function ForgotPasswordPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      await apiClient.post("/auth/request-reset", { email });
-      toast.success("Reset code sent to your email");
-      navigate("/reset-password", { state: { email } });
+      const { data } = await apiClient.post("/auth/request-reset", { email });
+      
+      // Instead of just a toast, we pass the code to the ResetPasswordPage
+      if (data.resetCode) {
+        toast.success("Code generated successfully!", { duration: 3000 });
+        navigate("/reset-password", { 
+          state: { 
+            email, 
+            resetCode: data.resetCode 
+          } 
+        });
+      } else {
+        toast.error("Failed to generate code");
+      }
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
         toast.error(err.response?.data?.error || "Something went wrong");
@@ -51,7 +62,7 @@ export default function ForgotPasswordPage() {
             disabled={loading}
             className="w-full bg-linear-to-r from-brand-purple to-brand-pink py-3 rounded-xl text-white font-semibold disabled:opacity-50"
           >
-            {loading ? "Sending..." : "Send Reset Code"}
+            {loading ? "Generating..." : "Send Reset Code"}
           </button>
         </form>
         <button

@@ -3,17 +3,19 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import axios from "axios";
 import apiClient from "../lib/apiClient";
-import { useAuthStore } from "../store/authStore"; // <-- Import the store
+import { useAuthStore } from "../store/authStore";
 import toast from "react-hot-toast";
 
 export default function ResetPasswordPage() {
   const location = useLocation();
-  const email = (location.state as { email?: string })?.email || "";
-  const [token, setToken] = useState("");
+  // Read the email and resetCode passed from the previous page
+  const { email, resetCode } = (location.state as { email?: string; resetCode?: string }) || {};
+  
+  const [token, setToken] = useState(resetCode || ""); // Auto-fill with the code we passed
   const [newPassword, setNewPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const login = useAuthStore((s) => s.login); // <-- Get the login action
+  const login = useAuthStore((s) => s.login);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,7 +29,7 @@ export default function ResetPasswordPage() {
       
       toast.success("Password reset successful! Logging you in...");
       
-      // FIXED: Auto-login the user with the returned tokens
+      // Auto-login the user with the returned tokens
       login(data.user, data.accessToken, data.refreshToken);
       navigate("/dashboard");
     } catch (err: unknown) {
@@ -49,8 +51,21 @@ export default function ResetPasswordPage() {
         className="w-full max-w-md bg-white/5 backdrop-blur-sm border border-white/10 rounded-3xl p-8"
       >
         <h1 className="text-2xl font-bold text-white">Reset Password</h1>
-        <p className="text-gray-400 mt-2">Enter the code sent to your email and your new password.</p>
+        <p className="text-gray-400 mt-2">Enter your new password below.</p>
+        
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+          {/* DISPLAY THE CODE RIGHT ON THE SCREEN */}
+          {resetCode && (
+            <div className="bg-brand-card/50 border border-brand-purple/30 rounded-xl p-4 text-center">
+              <p className="text-xs text-gray-400 mb-1">Your verification code is:</p>
+              <p className="text-3xl font-bold tracking-widest text-brand-purple">{resetCode}</p>
+            </div>
+          )}
+
+          {/* 
+             The input is pre-filled with the code from the box above. 
+             You can leave it as is, or manually type it if you forgot.
+          */}
           <input
             type="text"
             placeholder="Reset code"
