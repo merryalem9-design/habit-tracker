@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import axios from "axios";
-// Fixed: Removed the unused 'signup' import
 import { login } from "../lib/authApi";
 import apiClient from "../lib/apiClient";
 import { useAuthStore } from "../store/authStore";
@@ -15,7 +14,6 @@ export default function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
-  // Fixed: Removed unused 'userId' state (it was being set but never read)
   const [isResending, setIsResending] = useState(false);
   const navigate = useNavigate();
   const setAuth = useAuthStore((s) => s.login);
@@ -35,13 +33,37 @@ export default function AuthPage() {
       } else {
         // Step 3: Login
         const data = await login(email, password);
+
+        // --- Check if a streak was broken while they were away ---
+        if (data.streakBroken && data.brokenHabitNames.length > 0) {
+          toast.custom((t) => (
+            <div
+              className="bg-brand-card border border-red-500/50 rounded-2xl p-5 shadow-2xl max-w-sm backdrop-blur-md relative z-999"              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="font-bold text-red-400 text-lg">Streak Broken! 💔</h3>
+              <p className="text-gray-300 text-sm mt-1 leading-relaxed">
+                Your streak for <strong className="text-white">{data.brokenHabitNames.join(', ')}</strong> was broken because you missed a day. 
+                <br />
+                <span className="text-gray-400">You can start over fresh today!</span>
+              </p>
+              <button
+                onClick={() => toast.dismiss(t.id)}
+                className="mt-4 w-full bg-brand-purple hover:bg-brand-purple/80 py-2.5 rounded-xl text-white text-sm font-semibold transition"
+              >
+                Got it, start fresh
+              </button>
+            </div>
+          ), { duration: 7000, position: 'bottom-center' });
+        }
+        // --- End streak check ---
+
         setAuth(data.user, data.accessToken, data.refreshToken);
         navigate("/dashboard");
       }
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
         if (err.response?.data.code === "ACCOUNT_NOT_VERIFIED") {
-          setIsSignup(true); // Switch user to the signup flow to trigger verification
+          setIsSignup(true);
           setIsVerifying(true);
           toast.error("You must verify your account first.");
         } else {
@@ -76,7 +98,6 @@ export default function AuthPage() {
         toast.success("New verification code sent to your email.");
       }
     } catch {
-      // Fixed: Removed the unused 'err' variable inside the catch block
       toast.error("Failed to resend code");
     } finally {
       setIsResending(false);
