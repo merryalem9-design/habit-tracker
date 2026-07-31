@@ -24,6 +24,7 @@ interface DistractResult {
     groupId?: string;
     needsSelection?: boolean;
     groups?: { id: string; category: string }[];
+    error?: string;
   };
 }
 
@@ -57,6 +58,9 @@ export default function DistractPage() {
       apiClient.get("/groups/mine").then((res) => {
         const groups = res.data.map((m: { group: { id: string; category: string } }) => m.group);
         setSupportGroups(groups);
+        
+        // FIXED: Use functional update to satisfy ESLint dependency rule
+        // Instead of reading `selectedGroupId`, we read the `prev` state provided by React
         if (groups.length > 0) {
           setSelectedGroupId((prev) => prev || groups[0].id);
         }
@@ -64,7 +68,6 @@ export default function DistractPage() {
         toast.error("Failed to load your groups");
       });
     } else {
-      // Defer synchronous state updates to avoid cascading render warnings
       queueMicrotask(() => {
         setSupportGroups([]);
         setSelectedGroupId("");
@@ -90,13 +93,7 @@ export default function DistractPage() {
         });
       }
 
-      // --- BULLETPROOF FIX START ---
-      // Even if selectedGroupId state is empty, force it to the first available group
-      let selectedIdToSend = selectedGroupId;
-      if (!selectedIdToSend && supportGroups.length > 0) {
-        selectedIdToSend = supportGroups[0].id;
-      }
-      // --- BULLETPROOF FIX END ---
+      const finalGroupId = selectedGroupId || (supportGroups.length > 0 ? supportGroups[0].id : undefined);
 
       const payload: { 
         type: DistractType; 
@@ -109,15 +106,20 @@ export default function DistractPage() {
         lng 
       };
       
-      if (selectedType === "support_group" && selectedIdToSend) {
-        payload.groupId = selectedIdToSend;
+      if (selectedType === "support_group" && finalGroupId) {
+        payload.groupId = finalGroupId;
       }
 
       const { data } = await apiClient.post("/distract-me", payload);
       setResult(data);
 
-      if (data.suggestionType === "support_group" && data.supportGroup?.sent) {
-        toast.success("💙 Support ping sent to your group!");
+      if (data.suggestionType === "support_group") {
+        if (data.supportGroup?.sent) {
+          toast.success("💙 Support ping sent to your group!");
+        } else if (data.supportGroup?.error) {
+          toast.error(data.supportGroup.error);
+          setResult(null); 
+        }
       }
       if (data.suggestionType === "ping_buddy" && data.pingBuddy?.sent) {
         toast.success("💬 Support message sent to your match!");
