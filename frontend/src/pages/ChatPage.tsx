@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, type ChangeEvent } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import apiClient from "../lib/apiClient";
@@ -27,6 +27,9 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [conversation, setConversation] = useState<Conversation | null>(null);
+  const [isTyping, setIsTyping] = useState(false); 
+  // FIXED: Replaced NodeJS.Timeout with ReturnType<typeof setTimeout>
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null); 
   const currentUser = useAuthStore((s) => s.user);
   const markAsRead = useChatStore((s) => s.markAsRead);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -65,19 +68,46 @@ export default function ChatPage() {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
       }, 100);
     };
+
+    const onUserTyping = ({ userId, isTyping: typingStatus }: { userId: string; isTyping: boolean }) => {
+      // Only set typing state if it's NOT the current user
+      if (userId !== currentUser?.id) {
+        setIsTyping(typingStatus);
+      }
+    };
+
     socket.on("new_message", onNewMessage);
+    socket.on("user_typing", onUserTyping);
 
     return () => {
       socket.off("new_message", onNewMessage);
+      socket.off("user_typing", onUserTyping);
       socket.emit("leave_conversation", conversationId);
     };
-  }, [conversationId, markAsRead]);
+  }, [conversationId, markAsRead, currentUser?.id]);
 
   const sendMessage = () => {
     if (!input.trim()) return;
     const socket = getSocket();
     socket.emit("send_message", { conversationId, content: input });
     setInput("");
+    // Reset typing indicator when message is sent
+    setIsTyping(false);
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+  };
+
+  const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setInput(value);
+
+    const socket = getSocket();
+    socket.emit("typing", { conversationId, isTyping: true });
+
+    // Clear previous timeout and set a new one
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      socket.emit("typing", { conversationId, isTyping: false });
+    }, 1500); // Stop showing typing indicator after 1.5 seconds of inactivity
   };
 
   const otherUser = conversation?.type === "direct"
@@ -108,10 +138,9 @@ export default function ChatPage() {
               animate={{ opacity: 1, y: 0 }}
               className={`flex flex-col w-full ${isOwn ? "items-end" : "items-start"}`}
             >
-              {/* Show the sender's alias only if it's NOT the current user (receiver) */}
               {!isOwn && (
                 <span className="text-xs text-gray-400 ml-2 mb-1 font-medium">
-                  {msg.senderId === currentUser?.id ? "You" : "Other User"}
+                  {msg.senderId === currentUser?.id ? "You" : "User"}
                 </span>
               )}
               
@@ -130,6 +159,23 @@ export default function ChatPage() {
             </motion.div>
           );
         })}
+        
+        {/* Typing Indicator Display */}
+        {isTyping && (
+          <div className="flex flex-col items-start w-full">
+            <span className="text-xs text-gray-400 ml-2 mb-1 font-medium">
+              {otherUser?.displayAlias || "User"}
+            </span>
+            <div className="bg-white/10 text-gray-200 rounded-bl-none border border-white/5 backdrop-blur-sm p-3 rounded-2xl max-w-[75%] w-24">
+              <div className="flex gap-1 justify-center items-center h-5">
+                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
+                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
+                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></span>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div ref={messagesEndRef} />
       </div>
 
@@ -140,7 +186,7 @@ export default function ChatPage() {
             type="text"
             placeholder="Type a message..."
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={handleInputChange}
             onKeyDown={(e) => e.key === "Enter" && sendMessage()}
             className="flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-gray-500 focus:border-brand-purple focus:outline-none"
           />
