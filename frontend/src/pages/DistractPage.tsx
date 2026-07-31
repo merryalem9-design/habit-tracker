@@ -64,7 +64,7 @@ export default function DistractPage() {
         toast.error("Failed to load your groups");
       });
     } else {
-      // FIX: Defer synchronous state updates to avoid cascading render warnings
+      // Defer synchronous state updates to avoid cascading render warnings
       queueMicrotask(() => {
         setSupportGroups([]);
         setSelectedGroupId("");
@@ -90,6 +90,14 @@ export default function DistractPage() {
         });
       }
 
+      // --- BULLETPROOF FIX START ---
+      // Even if selectedGroupId state is empty, force it to the first available group
+      let selectedIdToSend = selectedGroupId;
+      if (!selectedIdToSend && supportGroups.length > 0) {
+        selectedIdToSend = supportGroups[0].id;
+      }
+      // --- BULLETPROOF FIX END ---
+
       const payload: { 
         type: DistractType; 
         lat?: number; 
@@ -101,8 +109,8 @@ export default function DistractPage() {
         lng 
       };
       
-      if (selectedType === "support_group" && selectedGroupId) {
-        payload.groupId = selectedGroupId;
+      if (selectedType === "support_group" && selectedIdToSend) {
+        payload.groupId = selectedIdToSend;
       }
 
       const { data } = await apiClient.post("/distract-me", payload);
