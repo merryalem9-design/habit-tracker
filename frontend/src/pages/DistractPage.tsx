@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import axios from "axios";
 import apiClient from "../lib/apiClient";
@@ -43,19 +43,33 @@ export default function DistractPage() {
   const [supportGroups, setSupportGroups] = useState<{ id: string; category: string }[]>([]);
   const navigate = useNavigate();
 
+  const prevSelectedType = useRef<DistractType>("quote");
+
   // When support_group is selected, check the user's groups
   useEffect(() => {
     if (selectedType === "support_group") {
+      if (prevSelectedType.current !== selectedType) {
+        setResult(null);
+        setFeedback("");
+      }
+      prevSelectedType.current = selectedType;
+      
       apiClient.get("/groups/mine").then((res) => {
-        const groups = res.data.map((m: any) => m.group);
+        const groups = res.data.map((m: { group: { id: string; category: string } }) => m.group);
         setSupportGroups(groups);
-        if (groups.length > 0) setSelectedGroupId(groups[0].id);
+        if (groups.length > 0) {
+          setSelectedGroupId((prev) => prev || groups[0].id);
+        }
       }).catch(() => {
         toast.error("Failed to load your groups");
       });
     } else {
-      setSupportGroups([]);
-      setSelectedGroupId("");
+      // FIX: Defer synchronous state updates to avoid cascading render warnings
+      queueMicrotask(() => {
+        setSupportGroups([]);
+        setSelectedGroupId("");
+      });
+      prevSelectedType.current = "quote";
     }
   }, [selectedType]);
 
@@ -76,10 +90,19 @@ export default function DistractPage() {
         });
       }
 
-      // Build the payload
-      const payload: any = { type: selectedType, lat, lng };
+      const payload: { 
+        type: DistractType; 
+        lat?: number; 
+        lng?: number; 
+        groupId?: string;
+      } = { 
+        type: selectedType, 
+        lat, 
+        lng 
+      };
+      
       if (selectedType === "support_group" && selectedGroupId) {
-        payload.groupId = selectedGroupId; // <-- Send selected group
+        payload.groupId = selectedGroupId;
       }
 
       const { data } = await apiClient.post("/distract-me", payload);
@@ -143,12 +166,11 @@ export default function DistractPage() {
           </select>
         </div>
 
-        {/* Render Group Selector ONLY if support_group is selected and they have multiple groups */}
-        {selectedType === "support_group" && supportGroups.length > 1 && (
+        {selectedType === "support_group" && supportGroups.length > 0 && (
           <div className="mb-4">
             <label className="text-sm text-gray-400 block mb-2">Select a group to ping:</label>
             <select
-              value={selectedGroupId}
+              value={selectedGroupId || (supportGroups.length > 0 ? supportGroups[0].id : "")}
               onChange={(e) => setSelectedGroupId(e.target.value)}
               className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white focus:border-brand-purple focus:outline-none"
             >
