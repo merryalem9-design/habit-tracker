@@ -38,6 +38,7 @@ const DISTRACT_OPTIONS = [
 export default function DistractPage() {
   const [selectedType, setSelectedType] = useState<DistractType>("quote");
   const [loading, setLoading] = useState(false);
+  const [loadingGroups, setLoadingGroups] = useState(false); 
   const [result, setResult] = useState<DistractResult | null>(null);
   const [feedback, setFeedback] = useState("");
   const [selectedGroupId, setSelectedGroupId] = useState<string>("");
@@ -48,11 +49,15 @@ export default function DistractPage() {
 
   useEffect(() => {
     if (selectedType === "support_group") {
-      if (prevSelectedType.current !== selectedType) {
-        setResult(null);
-        setFeedback("");
-      }
-      prevSelectedType.current = selectedType;
+      // FIXED: Wrapped synchronous state updates inside queueMicrotask to satisfy ESLint
+      queueMicrotask(() => {
+        if (prevSelectedType.current !== selectedType) {
+          setResult(null);
+          setFeedback("");
+          setLoadingGroups(true);
+        }
+        prevSelectedType.current = selectedType;
+      });
       
       apiClient.get("/groups/mine").then((res) => {
         const groups = res.data.map((m: { group: { id: string; category: string } }) => m.group);
@@ -62,17 +67,27 @@ export default function DistractPage() {
         }
       }).catch(() => {
         toast.error("Failed to load your groups");
+      }).finally(() => {
+        // Ensure loading stops regardless of success or failure
+        setLoadingGroups(false);
       });
     } else {
+      // Existing safe queueMicrotask usage for the else block
       queueMicrotask(() => {
         setSupportGroups([]);
         setSelectedGroupId("");
+        setLoadingGroups(false);
       });
       prevSelectedType.current = "quote";
     }
   }, [selectedType]);
 
   const triggerDistract = async () => {
+    if (loadingGroups) {
+      toast.error("Still loading your groups. Please wait a moment.");
+      return;
+    }
+
     setLoading(true);
     setResult(null);
     setFeedback("");
@@ -108,17 +123,12 @@ export default function DistractPage() {
 
       const { data } = await apiClient.post("/distract-me", payload);
       
-      // --- DEBUGGING TO CONSOLE ---
-      console.log("[Distract Me] API Response Data:", data);
-      // ----------------------------
-
       if (data.suggestionType === "support_group") {
         if (data.supportGroup?.sent) {
           toast.success("💙 Support ping sent to your group!");
           setResult(data);
         } else {
-          // Show the EXACT error returned by the backend, or fallback to the JSON string if undefined
-          const errorMsg = data.supportGroup?.error || data.error || `Could not ping the selected group. (Backend returned: ${JSON.stringify(data)})`;
+          const errorMsg = data.supportGroup?.error || data.error || "Could not ping the selected group.";
           toast.error(errorMsg);
           setResult(null); 
           return;
@@ -199,13 +209,13 @@ export default function DistractPage() {
 
         <button
           onClick={triggerDistract}
-          disabled={loading || (selectedType === "support_group" && supportGroups.length === 0)}
+          disabled={loading || loadingGroups || (selectedType === "support_group" && supportGroups.length === 0)}
           className="w-full bg-linear-to-r from-brand-purple to-brand-pink py-3 rounded-xl text-white font-semibold disabled:opacity-50"
         >
-          {loading ? "Loading..." : (selectedType === "support_group" && supportGroups.length > 1 ? "Send Support Ping" : "Get Suggestion")}
+          {loading ? "Loading..." : (loadingGroups ? "Loading groups..." : (selectedType === "support_group" && supportGroups.length > 1 ? "Send Support Ping" : "Get Suggestion"))}
         </button>
 
-        {selectedType === "support_group" && supportGroups.length === 0 && !loading && (
+        {selectedType === "support_group" && supportGroups.length === 0 && !loading && !loadingGroups && (
           <p className="text-yellow-400 text-sm mt-2 text-center">
             You are not in any groups yet. Join a group from your dashboard first.
           </p>
