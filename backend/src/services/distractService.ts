@@ -2,10 +2,8 @@ import prisma from "../prismaClient";
 import logger from "../lib/logger";
 import { getIO } from "../socket";
 
-// ─── Public types for the frontend ──────────────────────────────
 export type DistractType = "quote" | "coffee" | "ping_buddy" | "support_group";
 
-// ─── Internal mapping to SuggestionType enum ────────────────────
 function mapToSuggestionType(type: DistractType): "content" | "activity" | "nearby_place" | "ping_buddy" {
   switch (type) {
     case "quote": return "content";
@@ -16,7 +14,6 @@ function mapToSuggestionType(type: DistractType): "content" | "activity" | "near
   }
 }
 
-// ─── Result structure ──────────────────────────────────────────
 interface PingBuddyResult {
   sent: boolean;
   matched?: boolean;
@@ -31,11 +28,10 @@ interface DistractResult {
   content?: { id: string; text: string; source: string | null; category: string };
   nearbyPlace?: { name: string; address: string; types: string[] } | null;
   pingBuddy?: PingBuddyResult;
-  supportGroup?: { sent: boolean; groupId?: string; needsSelection?: boolean; groups?: any[] };
+  supportGroup?: { sent: boolean; groupId?: string; needsSelection?: boolean; groups?: any[]; error?: string };
   logId: string;
 }
 
-// ─── Ping the user's 1‑on‑1 match or suggest emergency contact ──
 async function pingDirectMatch(userId: string): Promise<PingBuddyResult> {
   const conv = await prisma.conversation.findFirst({
     where: {
@@ -86,22 +82,21 @@ async function pingDirectMatch(userId: string): Promise<PingBuddyResult> {
   };
 }
 
-// ─── Send a support ping to a specific or first available group ──
 async function supportGroupPing(userId: string, targetGroupId?: string) {
-  // If no target group was provided by the frontend, detect what to do
+  // If no target group provided, detect automatically
   if (!targetGroupId) {
     const memberships = await prisma.groupMembership.findMany({
       where: { userId, status: "active" },
       include: { group: true }
     });
 
-    if (memberships.length === 0) return { sent: false };
+    if (memberships.length === 0) {
+      return { sent: false, error: "You are not in any active groups yet. Please join one from your dashboard." };
+    }
     
-    // If they are in exactly ONE group, proceed automatically
     if (memberships.length === 1) {
       targetGroupId = memberships[0].groupId;
     } else {
-      // If they are in MORE THAN ONE group, return the list and ask them to choose
       return { 
         sent: false, 
         needsSelection: true, 
@@ -110,13 +105,18 @@ async function supportGroupPing(userId: string, targetGroupId?: string) {
     }
   }
 
-  // Find the specific membership for the validated groupId
+  // Verify the selected group ID actually belongs to the user
   const membership = await prisma.groupMembership.findFirst({
     where: { groupId: targetGroupId, userId, status: "active" },
     include: { group: true },
   });
 
-  if (!membership) return { sent: false, error: "You are not a member of this group" };
+  if (!membership) {
+    return { 
+      sent: false, 
+      error: "You are not currently a member of the selected group. Please try re-joining from your dashboard." 
+    };
+  }
 
   const post = await prisma.post.create({
     data: {
@@ -142,7 +142,6 @@ async function supportGroupPing(userId: string, targetGroupId?: string) {
   return { sent: true, groupId: targetGroupId };
 }
 
-// ─── Get a random quote ───────────────────────────────────────────
 async function getRandomQuote() {
   const items = await prisma.distractionContent.findMany({
     where: { type: { in: ["quote", "verse"] } },
@@ -151,7 +150,6 @@ async function getRandomQuote() {
   return items[Math.floor(Math.random() * items.length)];
 }
 
-// ─── Find a nearby coffee shop ────────────────────────────────────
 async function findNearbyCoffee(lat: number, lng: number) {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) {
@@ -182,14 +180,13 @@ async function findNearbyCoffee(lat: number, lng: number) {
   }
 }
 
-// ─── Main entry point ─────────────────────────────────────────────
 export async function getDistraction(
   userId: string,
   type: DistractType,
   checkInId: string | null,
   lat?: number,
   lng?: number,
-  targetGroupId?: string // <-- Added to receive selection
+  targetGroupId?: string
 ): Promise<DistractResult> {
   let result: Omit<DistractResult, "logId">;
   let contentId: string | null = null;
@@ -225,7 +222,7 @@ export async function getDistraction(
     }
   }
 
-  // Only log the distraction if it was actually sent, or we don't need a selection
+  // Create a log if we successfully sent something or if it's the first stage of selection
   if (type !== "support_group" || (result.supportGroup && !result.supportGroup.needsSelection)) {
     const log = await prisma.distractionLog.create({
       data: {
@@ -239,6 +236,5 @@ export async function getDistraction(
     return { ...result, logId: log.id };
   }
 
-  // If we are waiting for a selection, don't create the log yet
   return { ...result, logId: "" };
 }

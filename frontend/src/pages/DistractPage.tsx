@@ -46,7 +46,6 @@ export default function DistractPage() {
 
   const prevSelectedType = useRef<DistractType>("quote");
 
-  // When support_group is selected, check the user's groups
   useEffect(() => {
     if (selectedType === "support_group") {
       if (prevSelectedType.current !== selectedType) {
@@ -58,9 +57,6 @@ export default function DistractPage() {
       apiClient.get("/groups/mine").then((res) => {
         const groups = res.data.map((m: { group: { id: string; category: string } }) => m.group);
         setSupportGroups(groups);
-        
-        // FIXED: Use functional update to satisfy ESLint dependency rule
-        // Instead of reading `selectedGroupId`, we read the `prev` state provided by React
         if (groups.length > 0) {
           setSelectedGroupId((prev) => prev || groups[0].id);
         }
@@ -111,16 +107,23 @@ export default function DistractPage() {
       }
 
       const { data } = await apiClient.post("/distract-me", payload);
-      setResult(data);
 
+      // --- BULLETPROOF SUPPORT GROUP HANDLING ---
       if (data.suggestionType === "support_group") {
         if (data.supportGroup?.sent) {
           toast.success("💙 Support ping sent to your group!");
-        } else if (data.supportGroup?.error) {
-          toast.error(data.supportGroup.error);
-          setResult(null); 
+          setResult(data); // Show success
+        } else {
+          // If the backend returned an error, show the exact error and clear the result
+          const errorMsg = data.supportGroup?.error || "Could not ping support group.";
+          toast.error(errorMsg);
+          setResult(null); // Prevents "No group found" card from showing
+          return;
         }
+      } else {
+        setResult(data);
       }
+
       if (data.suggestionType === "ping_buddy" && data.pingBuddy?.sent) {
         toast.success("💬 Support message sent to your match!");
         if (data.pingBuddy.conversationId) {
@@ -271,30 +274,13 @@ export default function DistractPage() {
               </div>
             )}
 
-            {result.suggestionType === "support_group" && result.supportGroup && (
+            {result.suggestionType === "support_group" && result.supportGroup?.sent && (
               <div>
-                {result.supportGroup.sent ? (
-                  <>
-                    <p className="text-white font-semibold">💙 Support ping sent!</p>
-                    <p className="text-gray-400 text-sm mt-1">
-                      Your group has been notified that you need support.
-                      Someone will reach out soon.
-                    </p>
-                  </>
-                ) : (
-                  <div>
-                    <p className="text-white font-semibold">No group found</p>
-                    <p className="text-gray-400 text-sm mt-1">
-                      You're not in a group yet. Join a group from your dashboard to use this feature.
-                    </p>
-                    <button
-                      onClick={() => navigate("/dashboard")}
-                      className="mt-3 text-brand-purple hover:underline text-sm"
-                    >
-                      Go to Dashboard →
-                    </button>
-                  </div>
-                )}
+                <p className="text-white font-semibold">💙 Support ping sent!</p>
+                <p className="text-gray-400 text-sm mt-1">
+                  Your group has been notified that you need support.
+                  Someone will reach out soon.
+                </p>
               </div>
             )}
 
