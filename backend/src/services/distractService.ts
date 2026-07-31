@@ -83,63 +83,70 @@ async function pingDirectMatch(userId: string): Promise<PingBuddyResult> {
 }
 
 async function supportGroupPing(userId: string, targetGroupId?: string) {
-  // If no target group provided, detect automatically
-  if (!targetGroupId) {
-    const memberships = await prisma.groupMembership.findMany({
-      where: { userId, status: "active" },
-      include: { group: true }
+  try {
+    // If no target group provided, detect automatically
+    if (!targetGroupId) {
+      const memberships = await prisma.groupMembership.findMany({
+        where: { userId, status: "active" },
+        include: { group: true }
+      });
+
+      if (memberships.length === 0) {
+        return { sent: false, error: "You are not in any active groups yet. Please join one from your dashboard." };
+      }
+      
+      if (memberships.length === 1) {
+        targetGroupId = memberships[0].groupId;
+      } else {
+        return { 
+          sent: false, 
+          needsSelection: true, 
+          groups: memberships.map(m => ({ id: m.group.id, category: m.group.category })) 
+        };
+      }
+    }
+
+    // Verify the selected group ID actually belongs to the user
+    const membership = await prisma.groupMembership.findFirst({
+      where: { groupId: targetGroupId, userId, status: "active" },
     });
 
-    if (memberships.length === 0) {
-      return { sent: false, error: "You are not in any active groups yet. Please join one from your dashboard." };
-    }
-    
-    if (memberships.length === 1) {
-      targetGroupId = memberships[0].groupId;
-    } else {
+    if (!membership) {
       return { 
         sent: false, 
-        needsSelection: true, 
-        groups: memberships.map(m => ({ id: m.group.id, category: m.group.category })) 
+        error: "You are not currently a member of the selected group. Please try re-joining from your dashboard." 
       };
     }
-  }
 
-  // Verify the selected group ID actually belongs to the user
-  const membership = await prisma.groupMembership.findFirst({
-    where: { groupId: targetGroupId, userId, status: "active" },
-    include: { group: true },
-  });
+    const post = await prisma.post.create({
+      data: {
+        groupId: targetGroupId,
+        userId,
+        content: `${membership.aliasInGroup} is going through a tough moment and would appreciate some encouragement. 💙`,
+        flagged: false,
+      },
+    });
 
-  if (!membership) {
+    const shaped = {
+      id: post.id,
+      content: post.content,
+      checkInId: post.checkInId,
+      createdAt: post.createdAt,
+      alias: membership.aliasInGroup,
+      userId: post.userId,
+      reactions: [],
+    };
+
+    getIO().to(`group:${targetGroupId}`).emit("new_post", shaped);
+
+    return { sent: true, groupId: targetGroupId };
+  } catch (error) {
+    logger.error("Database error in supportGroupPing", { error });
     return { 
       sent: false, 
-      error: "You are not currently a member of the selected group. Please try re-joining from your dashboard." 
+      error: "A database error occurred while processing your request." 
     };
   }
-
-  const post = await prisma.post.create({
-    data: {
-      groupId: targetGroupId,
-      userId,
-      content: `${membership.aliasInGroup} is going through a tough moment and would appreciate some encouragement. 💙`,
-      flagged: false,
-    },
-  });
-
-  const shaped = {
-    id: post.id,
-    content: post.content,
-    checkInId: post.checkInId,
-    createdAt: post.createdAt,
-    alias: membership.aliasInGroup,
-    userId: post.userId,
-    reactions: [],
-  };
-
-  getIO().to(`group:${targetGroupId}`).emit("new_post", shaped);
-
-  return { sent: true, groupId: targetGroupId };
 }
 
 async function getRandomQuote() {
