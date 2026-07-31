@@ -1,10 +1,12 @@
 import { Request, Response } from "express";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
+import { differenceInCalendarDays } from "date-fns"; // <-- Added import
 import prisma from "../prismaClient";
 import { generateAlias } from "../utils/generateAlias";
 import logger from "../lib/logger";
 import { signAccessToken, generateRefreshToken, hashRefreshToken } from "../lib/tokens";
+import { recalculateStreak } from "../services/streakService"; // <-- Added import
 
 const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
@@ -27,6 +29,60 @@ async function generateUniqueVerificationCode(): Promise<string> {
   }
   return code;
 }
+
+// ─── NEW: Streak Check on Login ─────────────────────────────────────
+async function checkAndBreakStreaks(userId: string): Promise<string[]> {
+  const habits = await prisma.habit.findMany({
+    where: { userId, isActive: true },
+    include: { streak: true },
+  });
+
+  const brokenHabits: string[] = [];
+  const now = new Date();
+  const today = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+
+  for (const habit of habits) {
+    const streak = habit.streak;
+    if (!streak || !streak.lastCheckinDate) continue;
+
+    const lastDate = new Date(streak.lastCheckinDate);
+    const daysGap = differenceInCalendarDays(today, lastDate);
+
+    // If the gap is greater than 1 day, a day was missed.
+    if (daysGap > 1) {
+      // Insert a "skipped" check-in for the day after the last success
+      // This acts as the "break point" for the streak calculator
+      const breakDate = new Date(lastDate);
+      breakDate.setDate(breakDate.getDate() + 1);
+
+      // Only insert if the break date is in the past
+      if (breakDate < today) {
+        const existingSkip = await prisma.checkIn.findUnique({
+          where: { habitId_date: { habitId: habit.id, date: breakDate } }
+        });
+        
+        if (!existingSkip) {
+          await prisma.checkIn.create({
+            data: {
+              habitId: habit.id,
+              userId: userId,
+              date: breakDate,
+              status: "skipped"
+            }
+          });
+        }
+      }
+
+      // Force recalculation of the streak (which will set it to 0)
+      await recalculateStreak(habit.id);
+      brokenHabits.push(habit.title);
+    }
+  }
+
+  return brokenHabits;
+}
+
+// ─── END NEW STREAK LOGIC ──────────────────────────────────────────
 
 export async function signup(req: Request, res: Response) {
   try {
@@ -130,11 +186,18 @@ export async function login(req: Request, res: Response) {
     const passwordMatches = await bcrypt.compare(password, user.passwordHash);
     if (!passwordMatches) return res.status(401).json({ error: "Invalid email or password" });
 
+    // ─── NEW: Check for broken streaks on this login ──────────────
+    const brokenHabitNames = await checkAndBreakStreaks(user.id);
+    // ──────────────────────────────────────────────────────────────
+
     const { accessToken, refreshToken } = await issueTokenPair(user.id);
     res.json({
       accessToken,
       refreshToken,
       user: { id: user.id, email: user.email, displayAlias: user.displayAlias, isVerified: user.isVerified },
+      // Return flags to the frontend so it can show the "Start Again" message
+      streakBroken: brokenHabitNames.length > 0,
+      brokenHabitNames
     });
   } catch (error) {
     logger.error("Login error", { error });
@@ -209,16 +272,13 @@ export async function resetPassword(req: Request, res: Response) {
   try {
     const { email, token, newPassword } = req.body;
     
-    // --- FIX START: Fetches passwordHash to check against the old password ---
     const user = await prisma.user.findUnique({ 
       where: { email },
       select: { id: true, email: true, displayAlias: true, isVerified: true, passwordHash: true }
     });
-    // --- FIX END ---
 
     if (!user) return res.status(404).json({ error: "User not found" });
 
-    // --- NEW CHECK: Ensure they aren't reusing the old password ---
     const isSamePassword = await bcrypt.compare(newPassword, user.passwordHash);
     if (isSamePassword) {
       return res.status(400).json({ error: "You can't use your old password again" });
@@ -240,7 +300,6 @@ export async function resetPassword(req: Request, res: Response) {
       prisma.passwordResetToken.update({ where: { id: resetToken.id }, data: { used: true } }),
     ]);
 
-    // Auto-login user after password reset
     const { accessToken, refreshToken } = await issueTokenPair(user.id);
 
     res.json({

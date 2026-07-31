@@ -13,6 +13,9 @@ export async function createPost(req: AuthRequest, res: Response) {
   try {
     const { groupId, checkInId, content } = req.body;
 
+    // Fetch the group to get its category for notifications later
+    const group = await prisma.group.findUnique({ where: { id: groupId }, select: { category: true } });
+
     const membership = await prisma.groupMembership.findFirst({
       where: { groupId, userId: req.userId, status: "active" },
     });
@@ -65,7 +68,9 @@ export async function createPost(req: AuthRequest, res: Response) {
       createdAt: post.createdAt,
       alias: membership.aliasInGroup,
       userId: post.userId,
-      flagged: post.flagged, // <-- ADDED: Sends flag status to frontend
+      groupId: groupId,               // Added: So frontend can link back
+      groupCategory: group?.category, // Added: So frontend can show the group name in the toast
+      flagged: post.flagged,
       reactions: [] as unknown[],
     };
 

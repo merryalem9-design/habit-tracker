@@ -141,10 +141,11 @@ async function supportGroupPing(userId: string, targetGroupId?: string) {
 
     return { sent: true, groupId: targetGroupId };
   } catch (error) {
-    logger.error("Database error in supportGroupPing", { error });
+    // Logging explicitly so you can check your Render backend logs
+    console.error("[Support Group Ping] Database Error:", error);
     return { 
       sent: false, 
-      error: "A database error occurred while processing your request." 
+      error: "A database error occurred while processing your request. Check Render backend logs for details." 
     };
   }
 }

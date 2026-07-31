@@ -107,17 +107,20 @@ export default function DistractPage() {
       }
 
       const { data } = await apiClient.post("/distract-me", payload);
+      
+      // --- DEBUGGING TO CONSOLE ---
+      console.log("[Distract Me] API Response Data:", data);
+      // ----------------------------
 
-      // --- BULLETPROOF SUPPORT GROUP HANDLING ---
       if (data.suggestionType === "support_group") {
         if (data.supportGroup?.sent) {
           toast.success("💙 Support ping sent to your group!");
-          setResult(data); // Show success
+          setResult(data);
         } else {
-          // If the backend returned an error, show the exact error and clear the result
-          const errorMsg = data.supportGroup?.error || "Could not ping support group.";
+          // Show the EXACT error returned by the backend, or fallback to the JSON string if undefined
+          const errorMsg = data.supportGroup?.error || data.error || `Could not ping the selected group. (Backend returned: ${JSON.stringify(data)})`;
           toast.error(errorMsg);
-          setResult(null); // Prevents "No group found" card from showing
+          setResult(null); 
           return;
         }
       } else {
