@@ -49,7 +49,6 @@ export default function DistractPage() {
 
   useEffect(() => {
     if (selectedType === "support_group") {
-      // FIXED: Wrapped synchronous state updates inside queueMicrotask to satisfy ESLint
       queueMicrotask(() => {
         if (prevSelectedType.current !== selectedType) {
           setResult(null);
@@ -68,11 +67,9 @@ export default function DistractPage() {
       }).catch(() => {
         toast.error("Failed to load your groups");
       }).finally(() => {
-        // Ensure loading stops regardless of success or failure
         setLoadingGroups(false);
       });
     } else {
-      // Existing safe queueMicrotask usage for the else block
       queueMicrotask(() => {
         setSupportGroups([]);
         setSelectedGroupId("");
@@ -127,7 +124,17 @@ export default function DistractPage() {
         if (data.supportGroup?.sent) {
           toast.success("💙 Support ping sent to your group!");
           setResult(data);
+        } else if (data.supportGroup?.needsSelection) {
+          // If the backend asks for a selection, update dropdown state silently.
+          if (data.supportGroup.groups && data.supportGroup.groups.length > 0) {
+            setSupportGroups(data.supportGroup.groups);
+            setSelectedGroupId(data.supportGroup.groups[0].id);
+          }
+          toast.error("The group selection was not recognized. Please try selecting your group again from the dropdown.");
+          setResult(null); 
+          return;
         } else {
+          // Normal error handling
           const errorMsg = data.supportGroup?.error || data.error || "Could not ping the selected group.";
           toast.error(errorMsg);
           setResult(null); 
